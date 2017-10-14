@@ -102,9 +102,135 @@ class FlintstonesDataset(object):
     def sorted_by_episode(self):
         return sorted(self.data, key=lambda x: x.gid())
 
-    def prepare_release_version(self):
+    def generate_release_version(self, version, out_dir='dataset'):
+
+        def delete_keys_from_dict(dict_del, lst_keys):
+            for k in lst_keys:
+                try:
+                    del dict_del[k]
+                except KeyError:
+                    pass
+            for v in dict_del.values():
+                if isinstance(v, dict):
+                    delete_keys_from_dict(v, lst_keys)
+            return dict_del
+
         to_release = copy.deepcopy(self)
-        
+        complete = to_release.filter_videos(
+            {'stage': 'stage_4b- objects', 'go': True}) + self.filter_videos(
+            {'stage': 'stage_4b- no objects', 'go': True}) + self.filter_videos(
+            {'stage': 'stage_4a', 'go': True})
+
+        keys_to_del = ['status', 'labelSpan', 'localID', 'originalSpelling']
+
+        for vid in complete:
+            vid._data['characters'] = [char.data() for char in vid._data['characters']]
+            vid._data['objects'] = [obj.data() for obj in vid._data['objects']]
+        ds_json = [delete_keys_from_dict(vid._data, keys_to_del) for vid in complete]
+
+        out_file = os.path.join(out_dir, 'dataset_v{}.json'.format(version))
+        with open(out_file, 'w') as f:
+            json.dump(ds_json, f, sort_keys=True, indent=4)
+
+    def verify_dataset(self):
+        return self.verify_entities()
+
+    def verify_entities(self):
+
+        def concat_pos_tags(pos_tags):
+            pos_tags_concat = []
+            for pos in pos_tags:
+                for tagged_word in pos:
+                    pos_tags_concat.append(tagged_word)
+
+            return pos_tags_concat
+
+        def identify_referring_indices(
+                entity_npc,
+                entity_label_span,
+                descr_npcs,
+                coref_span_sets):
+            referring_idx = set()
+            s, e = entity_label_span
+            entity_label_span_set = set(range(s, e))
+            for i, descr_npc in enumerate(descr_npcs['named_chunks']):
+                s, e = descr_npcs['chunks'][i]
+                descr_npc_span_set = set(range(s, e))
+                if entity_npc.lower() == descr_npc.lower() and \
+                        (len(entity_label_span_set & descr_npc_span_set) > 0):
+                    referring_idx.update(descr_npc_span_set)
+                    break
+
+            for coref_span_set in coref_span_sets:
+                if len(coref_span_set & referring_idx) > 0:
+                    referring_idx.update(coref_span_set)
+
+            for descr_npc_span in descr_npcs['chunks']:
+                s, e = descr_npc_span
+                descr_npc_span_set = set(range(s, e))
+                if len(descr_npc_span_set & referring_idx) > 0:
+                    referring_idx.update(descr_npc_span_set)
+
+            return sorted(list(referring_idx))
+
+        def get_coref_cluster_span_sets(coref):
+            if coref == []:
+                return []
+
+            coref_cluster_span_sets = []
+
+            for i, cluster in enumerate(coref['clusters']):
+                cluster_span = set()
+                for cluster_item in cluster:
+                    cluster_span.update(set(range(cluster_item[0], cluster_item[1])))
+
+                coref_cluster_span_sets.append(cluster_span)
+
+            return coref_cluster_span_sets
+
+        count = defaultdict(list)
+        complete_vids = self.filter_videos(
+            {'stage': 'stage_4b- objects', 'go': True}) + self.filter_videos(
+            {'stage': 'stage_4b- no objects', 'go': True}) + self.filter_videos(
+            {'stage': 'stage_4a', 'go': True})
+
+        for video_anno_obj in complete_vids:
+            video_anno = video_anno_obj.data()
+            pos_tags = video_anno['parse']['pos_tags']
+            pos_tags_concat = concat_pos_tags(pos_tags)
+            coref = video_anno['parse']['coref']
+            coref_span_sets = get_coref_cluster_span_sets(coref)
+            npcs = video_anno['parse']['noun_phrase_chunks']
+            for entity_anno_obj in video_anno['characters']+video_anno['objects']:
+                entity_anno = entity_anno_obj.data()
+                if 'None' == entity_anno['entityLabel']:
+                    count['none object'].append(video_anno_obj.gid())
+                try:
+                    npc = entity_anno['labelNPC']
+                except KeyError:
+                    count['missing NPC label'].append(video_anno_obj.gid())
+                    break
+
+                if 'entitySpan' not in entity_anno:
+                    count['missing entity span'].append(video_anno_obj.gid())
+                    break
+
+                referring_idxs = identify_referring_indices(
+                    npc,
+                    entity_anno['entitySpan'],
+                    npcs,
+                    coref_span_sets)
+                try:
+                    referring_words = \
+                        [pos_tags_concat[idx] for idx in referring_idxs]
+                except:
+                    count['referring word issue'].append(video_anno_obj.gid())
+                    break
+
+                if len(referring_words) == 0:
+                    count['no referring words'].append(video_anno_obj.gid())
+                    break
+        return count
 
     def write_to_json(self, version, out_dir='dataset'):
         to_json = copy.deepcopy(self.data)
@@ -491,7 +617,8 @@ class VideoAnnotation(object):
                                 continue
                         ent._data['labelNPC'] = chunk_names[idx]
             except IndexError:
-                print(ent.gid())
+                pass
+                # print(ent.gid())
 
 
 class BaseAnnotation(object):
