@@ -16,8 +16,6 @@ def create_result(assmt):
     result['h_id'] = assmt.HITId
     return result
 
-# characters_present = [{'h_id': anno['h_id'], 'still_id': anno['stillID'], 'characters': set([ch['label'] for ch in json.loads(anno['characterBoxes'])])} for anno in assignment_results]
-
 
 def pickle_this(results_df, file_name):
     with open(file_name, 'w') as f:
@@ -88,7 +86,7 @@ def generate_stage_4_task_page(s3_base_path, img_id, n_chars, template_file='sta
 def generate_simpler_supl_task_page(s3_base_path, img_id, char_id, template_file='character_bbox_simple.html'):
     env = Environment(loader=FileSystemLoader('hit_templates'))
     template = env.get_template(template_file)
-    char_img = char_id + '.png'
+    char_img = char_id
     img_id = img_id + '_taskb.png'
     page_html = template.render(s3_uri_base=s3_base_path, image_id=img_id, char_img=char_img)
     page_html = page_html
@@ -205,6 +203,12 @@ def prepare_simpler_supl_hit(s3_base_path, still_id, char_id, static_parameters)
     return build_hit_params(question_html, static_parameters)
 
 
+def prepare_stage_1b(s3_base_path, vid, static_parameters):
+    still_id = vid.gid()
+    question_htmls = [generate_simpler_supl_task_page(s3_base_path, still_id, char.gid()) for char in vid.data()['characters']]
+    return [build_hit_params(qhtml, static_parameters) for qhtml in question_htmls]
+
+
 def prepare_hit(s3_base_path, img_uri, static_parameters, task_generator=generate_task_page):
     question_html = task_generator(s3_base_path, img_uri)
     return build_hit_params(question_html, static_parameters)
@@ -256,19 +260,13 @@ def generate_stage_3b_task_page(s3_base_paths, vid_anno, template_file='stage_3b
     return page_html
 
 
-def generate_stage_3_task_page(s3_base_paths, vid_anno, template_file='stage_3a.html'):
-
-    for char in vid_anno['characters']:
-        env = Environment(loader=FileSystemLoader('hit_templates'))
-        char_name = char['characterName']
-        template = env.get_template(template_file)
-        image_url = s3_base_paths['gifs'] + vid_anno['globalID'] + '.gif'
-        char_url = s3_base_paths['subtask'] + char['imageID']
-
-        page_html = template.render(s3_uri_base=s3_base_path, image_url=image_url, char_img=char_url,
-                                    char_name=char_name)
-        page_html = page_html
-        return page_html
+def generate_stage_3_task_page(s3_base_paths, vid, template_file='stage_3a.html'):
+    env = Environment(loader=FileSystemLoader('hit_templates'))
+    template = env.get_template(template_file)
+    image_url = s3_base_paths['gifs'] + vid.gid() + '.gif'
+    page_html = template.render(s3_uri_base=s3_base_path, image_url=image_url)
+    page_html = page_html
+    return page_html
 
 
 def prepare_stage_2_hit(s3_base_path, img_uri, poses, position_prepositions, static_parameters, task_generator=generate_stage_2_task_page):

@@ -38,6 +38,9 @@ class FlintstonesDataset(object):
     def update_s4b(self, stage4b_annos):
         _ = [video.update_stage4b(stage4b_annos) for video in self.data]
 
+    def filter_on_s1_quality(self, s1_quality_pass):
+        _ = [video.filter_quality_bins(s1_quality_pass) for video in self.data]
+
     def summarize_dataset(self):
         summary = {
             'video count': str(len(self.data)),
@@ -347,7 +350,10 @@ class VideoAnnotation(object):
             open_cv_image = np.array(frame_img)
             open_cv_image = open_cv_image[:, :, ::].copy()
             for char in self._data['characters']:
-                char_box = np.array(char.rect(frame_idx)).reshape(2, 2)
+                try:
+                    char_box = np.array(char.rect(frame_idx)).reshape(2, 2)
+                except ValueError:
+                    char_box = np.array([0, 0, 0, 0]).reshape(2, 2)
                 char_idn = char.gid().split('_')[-1]
                 cv2.putText(open_cv_image,
                             char_idn, tuple(char_box[0] + np.array([0, 25])),
@@ -488,7 +494,21 @@ class VideoAnnotation(object):
                 'back',
                 'torso',
                 'neck',
-                'ear'
+                'ear',
+                'eyebrow',
+                'finger',
+                'feet',
+                'toe',
+                'thumb',
+                'cheek',
+                'tongue',
+                'tooth',
+                'teeth',
+                'stomach',
+                'tummy',
+                'belly',
+                'hair',
+                'face',
             ]
             obj = obj.replace(',', '')
             if obj == self.setting():
@@ -542,6 +562,12 @@ class VideoAnnotation(object):
             _ = [obj.update_4b(objects) for obj in object_annos if obj._data['localID'] == label]
 
         self.set_status('stage_4b- objects')
+
+    def filter_quality_bins(self, bin_assignments):
+        if self.gid() in bin_assignments:
+            failed_s1 = bin_assignments[self.gid()]
+            if failed_s1:
+                self.set_status('stage_0', False, 'low quality stage1 annotation')
 
     def convert_obj_pos_to_span(self, obj):
         des = self.description()
