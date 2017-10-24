@@ -32,6 +32,9 @@ class FlintstonesDataset(object):
     def update_s3b(self, stage3b_annos):
         _ = [video.update_stage3b(stage3b_annos) for video in self.data]
 
+    def update_s3b_w_corrections(self, stage3b_annos):
+        _ = [video.update_stage3b_w_corrections(stage3b_annos) for video in self.data]
+
     def update_s4a(self, stage4a_annos):
         _ = [video.update_stage4a(stage4a_annos) for video in self.data]
 
@@ -327,9 +330,14 @@ class VideoAnnotation(object):
             x_offset += im.size[0]
         return combined_img
 
-    def get_key_frame_images(self):
-        frame_urls = [''.join([self.properties['s3_still_base'], self.gid(), pfix]) for pfix in self.keyframe_postfixes]
-        frame_images = [pilImage.open(requests.get(f_url, stream=True).raw) for f_url in frame_urls]
+    def get_key_frame_images(self, local=True):
+        if local:
+            local_path = '/Users/schwenk/wrk/animation_gan/ai2-vision-animation-gan/annotation_data/still_frames/'
+            frame_paths = [''.join([local_path, self.gid(), pfix]) for pfix in self.keyframe_postfixes]
+            frame_images = [pilImage.open(fp) for fp in frame_paths]
+        else:
+            frame_urls = [''.join([self.properties['s3_still_base'], self.gid(), pfix]) for pfix in self.keyframe_postfixes]
+            frame_images = [pilImage.open(requests.get(f_url, stream=True).raw) for f_url in frame_urls]
         return frame_images
 
     def display_keyframes(self):
@@ -476,6 +484,21 @@ class VideoAnnotation(object):
         self._data['description'] = s3b_annos[self.gid()]
         self.set_status('stage_3b')
 
+    def update_stage3b_w_corrections(self, s3b_annos_w_corrections):
+        if self.gid() in s3b_annos_w_corrections:
+            description, corrected_char_names = s3b_annos_w_corrections[self.gid()]
+            self._data['description'] = description
+
+            for correction in corrected_char_names:
+                if correction[0] == self.setting():
+                    pass
+                for char in self.data()['characters']:
+                    if char._data['entityLabel'].lower().strip() == correction[0].lower().strip():
+                        char._data['entityLabel'] = correction[1]
+                        # print(char._data['entityLabel'], correction[1])
+
+            self.set_status('stage_3b')
+
     def update_stage4a(self, s4a_annos):
 
         def pass_object(obj):
@@ -515,7 +538,8 @@ class VideoAnnotation(object):
                 return False
             for body_part in body_parts:
                 if obj == body_part or obj == body_part + 's':
-                    return False
+                    # return False
+                    return True
             return True
 
         this_stage_removal_reason = "missing stage4a annotation"
