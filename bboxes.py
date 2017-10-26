@@ -259,7 +259,6 @@ def cluster_from_nms_stage1_b(annos, _, __):
     # flattened_rects = [item for sublist in rects_per_anno for item in sublist[0]]
     boxes = annos
     flattened_boxes = [item for sublist in boxes for item in sublist]
-    print(flattened_boxes)
 
     flattened_boxes = [box for box in flattened_boxes if box_area(rect_from_anno(box)) > 100]
     chars_present = [box['label'] for box in flattened_boxes]

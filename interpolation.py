@@ -1,5 +1,18 @@
 import numpy as np
 import os
+import cv2
+
+trajectories_dir = 'trajectories'
+tracking_dir = 'tracking'
+interp_dir = 'interpolation'
+viz_dir = 'viz'
+
+new_dim = 128
+o_width = 640
+o_height = 480
+
+scale_down = new_dim / o_width
+asp_ratio = o_width / o_height
 
 
 def get_vid_from_eid(eid):
@@ -54,7 +67,8 @@ def extrapolate_rect(idx, start_rect, end_rect, start_frame, end_frame):
     return rect
 
 
-def generate_interpolation(dataset, eid, interp_dir = 'interpolated_boxes'):
+def generate_interpolation(dataset, eid):
+    interp_dir = os.path.join(trajectories_dir, interp_dir)
     entity_key_rects = get_entity(dataset, eid).rect()
     entity_rects = np.nan_to_num(interpolate_rects(entity_key_rects, [9,39,69], 75))
     outfile = os.path.join(interp_dir, eid + '.npy')
@@ -65,3 +79,29 @@ def generate_interpolation(dataset, eid, interp_dir = 'interpolated_boxes'):
 def interpolate_all_video_entites(prod_dataset, video):
     all_eids = [ent.gid() for ent in video.data()['characters'] +  video.data()['objects'] if ent.data()['entityLabel'] != 'None']
     return [generate_interpolation(prod_dataset, eid) for eid in all_eids]
+
+
+def draw_all_bboxes(frame_arr_square, raw_bboxes, entity_type = 'character'):
+    color_assignments = {
+        'character': (0, 255, 255),
+        'object': (0, 255, 0),
+    }
+    frame_arr = cv2.resize(frame_arr_square, None, fx = asp_ratio, fy=1)
+    bboxes = [bb.reshape(2, 2) for bb in raw_bboxes]
+    for bb in bboxes:
+        bb[:, 0] = bb[:, 0] * scale_down * asp_ratio
+        bb[:, 1] = bb[:, 1] * scale_down * asp_ratio
+    bboxes = [bb.astype(int) for bb in bboxes]
+    _ = [cv2.rectangle(frame_arr, tuple(bb[0]), tuple(bb[1]), color_assignments[entity_type] , thickness=1) for bb in bboxes]
+    return pil.fromarray(frame_arr)
+
+
+def draw_video_interps(video, play=True, out_dir='interp_viz'):
+    outfile = os.path.join(out_dir, video.gid() + '_interp.gif')
+    entity_interps = interpolate_all_video_entites(video)
+    frame_arr_data = np.load(frame_dir + video.gid() + '.npy')
+    interp_img_seq = [draw_all_bboxes(frame_arr_data[frame_n], [entity_rect[frame_n] for entity_rect in entity_interps], 'object') for frame_n in range(frame_arr_data.shape[0])]
+    interp_img_seq[0].save(outfile, save_all=True, optimize=True, duration=42, append_images=interp_img_seq[1:])
+    if play:
+        return Image(filename=outfile)
+    return interp_img_seq
