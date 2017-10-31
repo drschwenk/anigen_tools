@@ -68,16 +68,19 @@ def extrapolate_rect(idx, start_rect, end_rect, start_frame, end_frame):
 
 
 def generate_interpolation(dataset, eid):
-    interp_dir = os.path.join(trajectories_dir, interp_dir)
-    entity_key_rects = get_entity(dataset, eid).rect()
-    entity_rects = np.nan_to_num(interpolate_rects(entity_key_rects, [9,39,69], 75))
-    outfile = os.path.join(interp_dir, eid + '.npy')
-    np.save(outfile, entity_rects)
+    try:
+        interp_path = os.path.join(trajectories_dir, interp_dir)
+        entity_key_rects = get_entity(dataset, eid).rect()
+        entity_rects = np.nan_to_num(interpolate_rects(entity_key_rects, [9, 39, 69], 75))
+        outfile = os.path.join(interp_path, eid + '.npy')
+        np.save(outfile, entity_rects)
+    except FileNotFoundError:
+        print(eid)
     return entity_rects
     
 
 def interpolate_all_video_entites(prod_dataset, video):
-    all_eids = [ent.gid() for ent in video.data()['characters'] +  video.data()['objects'] if ent.data()['entityLabel'] != 'None']
+    all_eids = [ent.gid() for ent in video.data()['characters'] + video.data()['objects'] if ent.data()['entityLabel'] != 'None']
     return [generate_interpolation(prod_dataset, eid) for eid in all_eids]
 
 

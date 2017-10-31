@@ -283,6 +283,39 @@ class VideoAnnotation(object):
         self._data['status']['stage'] = 'stage_0'
         self._data['status']['go'] = True
 
+        self.body_parts = [
+            'arm',
+            'hand',
+            'leg',
+            'foot',
+            'head',
+            'eye',
+            'hip',
+            'shoulder',
+            'mouth',
+            'lip',
+            'chest',
+            'back',
+            'torso',
+            'neck',
+            'ear',
+            'eyebrow',
+            'finger',
+            'feet',
+            'toe',
+            'thumb',
+            'cheek',
+            'tongue',
+            'tooth',
+            'teeth',
+            'stomach',
+            'tummy',
+            'belly',
+            'hair',
+            'face',
+            'waist'
+        ]
+
         self.main_characters_lower = {
             "fred",
             "wilma",
@@ -502,44 +535,14 @@ class VideoAnnotation(object):
     def update_stage4a(self, s4a_annos):
 
         def pass_object(obj):
-            body_parts = [
-                'arm',
-                'hand',
-                'leg',
-                'foot',
-                'head',
-                'eye',
-                'hip',
-                'shoulder',
-                'mouth',
-                'lip',
-                'chest',
-                'back',
-                'torso',
-                'neck',
-                'ear',
-                'eyebrow',
-                'finger',
-                'feet',
-                'toe',
-                'thumb',
-                'cheek',
-                'tongue',
-                'tooth',
-                'teeth',
-                'stomach',
-                'tummy',
-                'belly',
-                'hair',
-                'face',
-            ]
+
             obj = obj.replace(',', '')
             if obj == self.setting():
                 return False
-            for body_part in body_parts:
+            for body_part in self.body_parts:
                 if obj == body_part or obj == body_part + 's':
-                    # return False
-                    return True
+                    # self.body_part_assignment(obj)
+                    return False
             return True
 
         this_stage_removal_reason = "missing stage4a annotation"
@@ -586,6 +589,11 @@ class VideoAnnotation(object):
             _ = [obj.update_4b(objects) for obj in object_annos if obj._data['localID'] == label]
 
         self.set_status('stage_4b- objects')
+
+    def body_part_assignment(self, obj):
+        print(obj)
+        for characters in self.data()['characters']:
+            pass
 
     def filter_quality_bins(self, bin_assignments):
         if self.gid() in bin_assignments:
