@@ -1,11 +1,14 @@
 from skimage.feature import match_template
-import skimage.draw as skdraw
-from mturk import pickle_this, unpickle_this
 import os
 import numpy as np
 import PIL.Image as pil
 import cv2
 
+trajectories_dir = 'trajectories'
+tracking_dir = 'tracking'
+interp_dir = 'interpolation'
+frame_arr_dir = 'vid_arr_data'
+viz_dir = 'viz'
 
 new_dim = 128
 owidth = 640
@@ -14,19 +17,17 @@ oheight = 480
 scale_down = new_dim / owidth
 asp_ratio = owidth / oheight
 
-prod_dataset = unpickle_this('prod_dataset_10_6.pkl')
-
 
 def track(frames,boxes,anno_frame_ids,search_region_scale_factor,img_size):
     boxes = boxes.astype(np.float32)
 
     # Template box
-    tx1,ty1,tx2,ty2 = boxes[anno_frame_ids[0],:].astype(np.int32)
-    template = frames[anno_frame_ids[0],ty1:ty2,tx1:tx2,:]
+    tx1, ty1, tx2, ty2 = boxes[anno_frame_ids[0],:].astype(np.int32)
+    template = frames[anno_frame_ids[0], ty1:ty2, tx1:tx2, :]
     for i in range(anno_frame_ids[0]):
-        boxes[i,:] = track_inner(
+        boxes[i, :] = track_inner(
             frames[i],
-            boxes[i,:],
+            boxes[i, :],
             template,
             search_region_scale_factor,
             img_size)
@@ -116,20 +117,10 @@ def scale_boxes(boxes,in_frame_size,out_frame_size):
     return boxes
 
 
-def draw_boxes(frames,boxes):
-    for i in range(boxes.shape[0]):
-        x1,y1,x2,y2 = boxes[i,:]
-        c = [x1,x2,x2,x1]
-        r = [y1,y1,y2,y2]
-        rr,cc = skdraw.polygon_perimeter(r,c,shape=frames[0].shape[0:2])
-        frames[i,rr,cc,:] = 0
-
-    return frames
-
-
-def track_all_video_entites(video, frame_arr_data):
-    all_eids = [ent.gid() for ent in video.data()['characters'] +  video.data()['objects'] if ent.data()['entityLabel'] != 'None']
-    return [generate_tracking(prod_dataset, eid, frame_arr_data) for eid in all_eids]
+def track_all_video_entites(video):
+    frame_arr_data = np.load(os.path.join(trajectories_dir, frame_arr_dir, video.gid() + '.npy'))
+    all_eids = [ent.gid() for ent in video.data()['characters'] + video.data()['objects'] if ent.data()['entityLabel'] != 'None']
+    return [generate_tracking(eid, frame_arr_data) for eid in all_eids]
 
 
 def track_rects(entity_key_rects, frame_arr_data):
@@ -139,11 +130,11 @@ def track_rects(entity_key_rects, frame_arr_data):
     return rescaled_boxes
 
 
-def generate_tracking(dataset, eid, frame_arr_data, interp_dir = 'tracked_boxes'):
-    boxes_npy = os.path.join('interpolated_boxes', eid + '.npy')
+def generate_tracking(eid, frame_arr_data):
+    boxes_npy = os.path.join(trajectories_dir, interp_dir, eid + '.npy')
     boxes = np.load(boxes_npy)
     entity_rects = np.nan_to_num(track_rects(boxes, frame_arr_data))
-    outfile = os.path.join(interp_dir, eid + '.npy')
+    outfile = os.path.join(trajectories_dir, tracking_dir, eid + '.npy')
     np.save(outfile, entity_rects)
     return entity_rects
 
@@ -163,11 +154,11 @@ def draw_all_bboxes(frame_arr_square, raw_bboxes, entity_type = 'character'):
     return pil.fromarray(frame_arr)
 
 
-def draw_video_tracking(video, play=False, out_dir='tracking_viz', frame_dir='./object_tracking/vid_arr_data/'):
+def draw_video_tracking(dataset, video, play=False, out_dir='tracking_viz', frame_dir='./object_tracking/vid_arr_data/'):
     outfile = os.path.join(out_dir, video.gid() + '_tracking.gif')
     frame_arr_data = np.load(frame_dir + video.gid() + '.npy')
     try:
-        entity_interps = track_all_video_entites(video, frame_arr_data)
+        entity_interps = track_all_video_entites(dataset, video)
         interp_img_seq = [draw_all_bboxes(frame_arr_data[frame_n], [entity_rect[frame_n] for entity_rect in entity_interps], 
             'object') for frame_n in range(frame_arr_data.shape[0])]
         interp_img_seq[0].save(outfile, save_all=True, optimize=True, duration=42, append_images=interp_img_seq[1:])
@@ -176,53 +167,3 @@ def draw_video_tracking(video, play=False, out_dir='tracking_viz', frame_dir='./
         return interp_img_seq
     except ValueError as e:
         print(video.gid(),'\n', e)
-
-
-
-def check_overlap(self, span1, span2):
-    x1, x2 = span1
-    y1, y2 = span2
-    return (x1 < y2) and (y1 < x2)
-
-def get_char_spans(self, char):
-    desc = self.description()
-    char_spans = [(m.start(), m.start() + len(char._data['entityLabel'].split())) for m in
-                  re.finditer(char._data['entityLabel'].lower(), desc.lower())]
-    word_spans = self.compute_word_spans()
-    return self.string_to_word_spans(char_spans[0], word_spans)
-
-def compute_word_spans(self):
-    words = self.description().split()
-    word_spans = []
-    for idx, word in enumerate(words):
-        if word_spans:
-            last_idx = word_spans[-1][1]
-            word_spans.append((last_idx, last_idx + 1 + len(word)))
-        else:
-            word_spans.append((0, len(word) + 1))
-    return word_spans
-
-def string_to_word_spans(self, match_span, word_spans):
-    spans = [idx for idx, word_span in enumerate(word_spans) if self.check_overlap(word_span, match_span)]
-    last_seen = []
-    for idx, word_idx in enumerate(spans):
-        if idx == 0:
-            last_seen.append(word_idx)
-        elif word_idx + 1 == last_seen[-1]:
-            last_seen.append(word_idx)
-    return spans[0], spans[-1]
-
-def assign_char_npcs(self, entites, comp_chars=True):
-    chunk_spans = self._data['parse']['noun_phrase_chunks']['chunks']
-    chunk_names = self._data['parse']['noun_phrase_chunks']['named_chunks']
-    for ent in entites:
-        if ent._data['entityLabel'].lower() in self.main_characters_lower:
-            continue
-        if comp_chars:
-            ent_spans = self.get_char_spans(ent)
-        else:
-            ent_spans = self.convert_obj_pos_to_span(ent)
-
-        for idx, chunk_span in enumerate(chunk_spans):
-            if self.check_overlap(ent_spans, chunk_span):
-                ent._data['labelNPC'] = chunk_names[idx]
