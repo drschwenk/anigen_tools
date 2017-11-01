@@ -3,11 +3,12 @@ import os
 import numpy as np
 import PIL.Image as pil
 import cv2
+import copy
 
 trajectories_dir = 'trajectories'
 tracking_dir = 'tracking'
 interp_dir = 'interpolation'
-frame_arr_dir = 'vid_arr_data'
+frame_arr_dir = 'frame_arr_data'
 viz_dir = 'viz'
 
 new_dim = 128
@@ -144,8 +145,8 @@ def draw_all_bboxes(frame_arr_square, raw_bboxes, entity_type = 'character'):
         'character': (0, 255, 255),
         'object': (0, 255, 0),
     }
-    frame_arr = cv2.resize(frame_arr_square, None, fx = asp_ratio, fy=1)
-    bboxes = [bb.reshape(2, 2) for bb in raw_bboxes]
+    frame_arr = cv2.resize(frame_arr_square, None, fx=asp_ratio, fy=1)
+    bboxes = copy.deepcopy([bb.reshape(2, 2) for bb in raw_bboxes])
     for bb in bboxes:
         bb[:, 0] = bb[:, 0] * scale_down * asp_ratio
         bb[:, 1] = bb[:, 1] * scale_down * asp_ratio
@@ -154,16 +155,29 @@ def draw_all_bboxes(frame_arr_square, raw_bboxes, entity_type = 'character'):
     return pil.fromarray(frame_arr)
 
 
-def draw_video_tracking(dataset, video, play=False, out_dir='tracking_viz', frame_dir='./object_tracking/vid_arr_data/'):
-    outfile = os.path.join(out_dir, video.gid() + '_tracking.gif')
-    frame_arr_data = np.load(frame_dir + video.gid() + '.npy')
-    try:
-        entity_interps = track_all_video_entites(dataset, video)
-        interp_img_seq = [draw_all_bboxes(frame_arr_data[frame_n], [entity_rect[frame_n] for entity_rect in entity_interps], 
-            'object') for frame_n in range(frame_arr_data.shape[0])]
-        interp_img_seq[0].save(outfile, save_all=True, optimize=True, duration=42, append_images=interp_img_seq[1:])
-        if play:
-            return Image(filename=outfile)
-        return interp_img_seq
-    except ValueError as e:
-        print(video.gid(),'\n', e)
+# def draw_video_tracking(video):
+#     outfile = os.path.join(trajectories_dir, viz_dir, video.gid() + '_tracking.gif')
+#     frame_arr_data = np.load(os.path.join(trajectories_dir,  frame_arr_dir, video.gid() + '.npy'))
+#     try:
+#         entity_interps = track_all_video_entites(video)
+#         interp_img_seq = [draw_all_bboxes(frame_arr_data[frame_n], [entity_rect[frame_n] for entity_rect in entity_interps],
+#             'object') for frame_n in range(frame_arr_data.shape[0])]
+#         interp_img_seq[0].save(outfile, save_all=True, optimize=True, duration=42, append_images=interp_img_seq[1:])
+#         return interp_img_seq
+#     except ValueError as e:
+#         print(video.gid(), '\n', e)
+
+
+def draw_video_tracking(video, retrieved=True):
+    if retrieved:
+        t_dir = './retrieved/' + trajectories_dir
+    else:
+        t_dir = trajectories_dir
+    outfile = os.path.join(t_dir, viz_dir, video.gid() + '_tracking.gif')
+    all_eids = [ent.gid() for ent in video.data()['characters'] + video.data()['objects'] if ent.data()['entityLabel'] != 'None']
+    entity_interps = [np.load(os.path.join(t_dir,  tracking_dir, eid + '.npy')) for eid in all_eids]
+    frame_arr_data = np.load(os.path.join(t_dir,  frame_arr_dir, video.gid() + '.npy'))
+    interp_img_seq = [draw_all_bboxes(frame_arr_data[frame_n], [entity_rect[frame_n] for entity_rect in entity_interps],
+                                      'object') for frame_n in range(frame_arr_data.shape[0])]
+    interp_img_seq[0].save(outfile, save_all=True, optimize=True, duration=42, append_images=interp_img_seq[1:])
+    return

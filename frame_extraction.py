@@ -14,7 +14,8 @@ video_dir = 'video_data'
 
 
 def video_to_images(in_video_name):
-    videogen = skvio.FFmpegReader(in_video_name).nextFrame()
+    vid_path = os.path.join(trajectories_dir, video_dir, in_video_name)
+    videogen = skvio.FFmpegReader(vid_path).nextFrame()
     images = []
     for img in videogen:
         images.append(img)
@@ -22,6 +23,7 @@ def video_to_images(in_video_name):
 
 
 def images_to_npy(images, out_npy_name):
+    out_py_path = os.path.join(trajectories_dir, frame_arr_dir, out_npy_name)
     for j, img in enumerate(images):
         img = sktransform.resize(img, (128, 128), mode='reflect')
         img = 255 * img
@@ -29,13 +31,13 @@ def images_to_npy(images, out_npy_name):
         images[j] = img
 
     images = np.stack(images, 0)
-    np.save(out_npy_name, images)
+    np.save(out_py_path, images)
 
 
-def video_to_npy(in_video_name):
-    out_npy_name = in_video_name.replace('mp4', '.npy')
-    images = video_to_images(in_video_name=in_video_name)
-    images_to_npy(images=images, out_npy_name=out_npy_name)
+def video_to_npy(in_video):
+    in_video_name = in_video.gid()
+    images = video_to_images(in_video_name=in_video_name + '.mp4')
+    images_to_npy(images=images, out_npy_name=in_video_name + '.npy')
 
 
 def video_to_npy_parallel(file_names):

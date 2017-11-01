@@ -197,8 +197,7 @@ class FlintstonesDataset(object):
         count = defaultdict(list)
         complete_vids = self.filter_videos(
             {'stage': 'stage_4b- objects', 'go': True}) + self.filter_videos(
-            {'stage': 'stage_4b- no objects', 'go': True}) + self.filter_videos(
-            {'stage': 'stage_4a', 'go': True})
+            {'stage': 'stage_4b- no objects', 'go': True}) # + self.filter_videos({'stage': 'stage_4a', 'go': True})
 
         for video_anno_obj in complete_vids:
             video_anno = video_anno_obj.data()
@@ -542,7 +541,8 @@ class VideoAnnotation(object):
             for body_part in self.body_parts:
                 if obj == body_part or obj == body_part + 's':
                     # self.body_part_assignment(obj)
-                    return False
+                    # return False
+                    return True
             return True
 
         this_stage_removal_reason = "missing stage4a annotation"

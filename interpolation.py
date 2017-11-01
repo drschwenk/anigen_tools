@@ -1,10 +1,12 @@
 import numpy as np
 import os
 import cv2
+import PIL.Image as pil
 
 trajectories_dir = 'trajectories'
 tracking_dir = 'tracking'
 interp_dir = 'interpolation'
+frame_arr_dir = 'frame_arr_data'
 viz_dir = 'viz'
 
 new_dim = 128
@@ -32,7 +34,7 @@ def get_entity(dataset, eid):
 def interpolate_rects(anno_rects, anno_frames ,num_frames):
     start_frames_id = [None]*num_frames
     end_frames_id = [None]*num_frames
-    for i in range(0,anno_frames[0]+1):
+    for i in range(0, anno_frames[0]+1):
         start_frames_id[i] = 0
         end_frames_id[i] = 1
 
@@ -84,7 +86,7 @@ def interpolate_all_video_entites(prod_dataset, video):
     return [generate_interpolation(prod_dataset, eid) for eid in all_eids]
 
 
-def draw_all_bboxes(frame_arr_square, raw_bboxes, entity_type = 'character'):
+def draw_all_bboxes(frame_arr_square, raw_bboxes, entity_type='character'):
     color_assignments = {
         'character': (0, 255, 255),
         'object': (0, 255, 0),
@@ -99,12 +101,21 @@ def draw_all_bboxes(frame_arr_square, raw_bboxes, entity_type = 'character'):
     return pil.fromarray(frame_arr)
 
 
-def draw_video_interps(video, play=True, out_dir='interp_viz'):
-    outfile = os.path.join(out_dir, video.gid() + '_interp.gif')
-    entity_interps = interpolate_all_video_entites(video)
-    frame_arr_data = np.load(frame_dir + video.gid() + '.npy')
-    interp_img_seq = [draw_all_bboxes(frame_arr_data[frame_n], [entity_rect[frame_n] for entity_rect in entity_interps], 'object') for frame_n in range(frame_arr_data.shape[0])]
+def draw_all_video_entites(prod_dataset, video):
+    all_eids = [ent.gid() for ent in video.data()['characters'] + video.data()['objects'] if ent.data()['entityLabel'] != 'None']
+    return [draw_video_interps(prod_dataset, eid) for eid in all_eids]
+
+
+def draw_video_interps(video, retrieved=True):
+    if retrieved:
+        t_dir = './retrieved/' + trajectories_dir
+    else:
+        t_dir = trajectories_dir
+    outfile = os.path.join(t_dir, viz_dir, video.gid() + '_interp.gif')
+    all_eids = [ent.gid() for ent in video.data()['characters'] + video.data()['objects'] if ent.data()['entityLabel'] != 'None']
+    entity_interps = [np.load(os.path.join(t_dir,  interp_dir, eid + '.npy')) for eid in all_eids]
+    frame_arr_data = np.load(os.path.join(t_dir,  frame_arr_dir, video.gid() + '.npy'))
+    interp_img_seq = [draw_all_bboxes(frame_arr_data[frame_n], [entity_rect[frame_n] for entity_rect in entity_interps],
+                                      'object') for frame_n in range(frame_arr_data.shape[0])]
     interp_img_seq[0].save(outfile, save_all=True, optimize=True, duration=42, append_images=interp_img_seq[1:])
-    if play:
-        return Image(filename=outfile)
-    return interp_img_seq
+    return
