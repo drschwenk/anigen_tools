@@ -1,5 +1,20 @@
 import numpy as np
 import cv2
+import os
+
+trajectories_dir = 'trajectories'
+tracking_dir = 'tracking'
+interp_dir = 'interpolation'
+frame_arr_dir = 'frame_arr_data'
+segmentation_dir = 'segmentation'
+viz_dir = 'viz'
+
+new_dim = 128
+owidth = 640
+oheight = 480
+
+scale_down = new_dim / owidth
+asp_ratio = owidth / oheight
 
 
 def mask_out_bg(img, entities, fn=0):
@@ -24,6 +39,7 @@ def segment_entity(img, rect, bg_mask):
 
 
 def segment_entity_rect(img, rect):
+    kernel = np.ones((5, 5), np.uint8)
     img = np.array(img)[:, :, ::]
     lab_img = cv2.cvtColor(img, cv2.COLOR_RGB2LAB)
     mask = np.zeros(img.shape[:2], np.uint8)
@@ -34,7 +50,32 @@ def segment_entity_rect(img, rect):
     cleanup_mask = np.zeros(img.shape[:2], np.uint8)
     x, y, x2, y2 = rect
     cleanup_mask[y:y2, x:x2] = 1
-    img = cv2.cvtColor(lab_img, cv2.COLOR_LAB2RGB)
     final_mask = mask2[:, :, np.newaxis] * cleanup_mask[:, :, np.newaxis]
-    img = img * final_mask
-    return img, final_mask
+    dilated_mask = cv2.dilate(final_mask, kernel, iterations=1)
+    return dilated_mask.reshape(final_mask.shape[:2])
+
+
+def scale_box(bbox):
+    bb = bbox.reshape(2, 2)
+    bb[:, 0] = bb[:, 0] * scale_down
+    bb[:, 1] = bb[:, 1] * scale_down * asp_ratio
+    return bb.reshape(4,)
+
+
+def segment_all_video_entities(video, retrieved=False):
+    if retrieved:
+        t_dir = './retrieved/' + trajectories_dir
+    else:
+        t_dir = trajectories_dir
+
+    seg_path = os.path.join(t_dir, segmentation_dir)
+    frame_arr_data = np.load(os.path.join(t_dir,  frame_arr_dir, video.gid() + '.npy'))
+    for frame_n in range(frame_arr_data.shape[0]):
+        for ent in video.data()['characters'] + video.data()['objects']:
+            outfile = os.path.join(seg_path, ent.gid() + '_segm.npy')
+            entity_rects = np.load(os.path.join(t_dir, tracking_dir, ent.gid() + '.npy'))
+            scaled_ent_box = scale_box(entity_rects[frame_n])
+            char_mask = segment_entity_rect(frame_arr_data[frame_n], scaled_ent_box)
+            np.save(outfile, char_mask)
+
+
