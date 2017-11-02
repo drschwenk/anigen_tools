@@ -11,6 +11,9 @@ video_mkd_template = """## Video ID {}
 #### Tracking
 ![tracking]({})
 
+#### Segmentation
+{} 
+
 ### Description
 {}
 
@@ -85,6 +88,10 @@ def draw_parse_trees(video):
 
 
 def gen_video_mkd(video):
+    segm_gif_str = ''
+    for ent in video.data()['characters'] + video.data()['characters']:
+        link = s3_doc_base_uri + ent.gid() + '_segm.gif'
+        segm_gif_str += '![segmentation]({})\n\n'.format(link)
     entry_args = [
         video.gid(),
         s3_doc_base_uri + video.gid() + '_keyframes.png',
@@ -92,6 +99,7 @@ def gen_video_mkd(video):
         video.display_gif(True),
         s3_doc_base_uri + video.gid() + '_interp.gif',
         s3_doc_base_uri + video.gid() + '_tracking.gif',
+        segm_gif_str,
         video.description(),
         '\t' + video.setting(),
         format_characters(video.characters_present()),
