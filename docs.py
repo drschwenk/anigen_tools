@@ -89,8 +89,8 @@ def draw_parse_trees(video):
 
 def gen_video_mkd(video):
     segm_gif_str = ''
-    for ent in video.data()['characters'] + video.data()['characters']:
-        link = s3_doc_base_uri + ent.gid() + '_segm.gif'
+    for ent in video.data()['characters'] + video.data()['objects']:
+        link = s3_doc_base_uri + ent.gid().replace(' ', '_') + '_segm.gif'
         segm_gif_str += '![segmentation]({})\n\n'.format(link)
     entry_args = [
         video.gid(),

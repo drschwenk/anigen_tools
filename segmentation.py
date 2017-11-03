@@ -68,20 +68,22 @@ def segment_all_video_entities(video, retrieved=False):
         t_dir = './retrieved/' + trajectories_dir
     else:
         t_dir = trajectories_dir
-    try:
-        seg_path = os.path.join(t_dir, segmentation_dir)
-        frame_arr_data = np.load(os.path.join(t_dir,  frame_arr_dir, video.gid() + '.npy'))
-        for ent in video.data()['characters'] + video.data()['objects']:
-            char_mask = []
+    seg_path = os.path.join(t_dir, segmentation_dir)
+    frame_arr_data = np.load(os.path.join(t_dir,  frame_arr_dir, video.gid() + '.npy'))
+    for ent in video.data()['characters'] + video.data()['objects']:
+        char_mask = []
+        outfile = os.path.join(seg_path, ent.gid() + '_segm.npy')
+        try:
             for frame_n in range(frame_arr_data.shape[0]):
-                outfile = os.path.join(seg_path, ent.gid() + '_segm.npy')
                 entity_rects = np.load(os.path.join(t_dir, tracking_dir, ent.gid() + '.npy'))
                 scaled_ent_box = scale_box(entity_rects[frame_n])
                 char_mask.append(segment_entity_rect(frame_arr_data[frame_n], scaled_ent_box))
-            np.save(outfile, np.array(char_mask))
-    except:
-        print(video.gid())
-
+        except:
+            char_mask = np.zeros(frame_arr_data.shape[:3], np.uint8)
+        try:
+            np.savez_compressed(outfile, np.array(char_mask))
+        except FileNotFoundError as e:
+            print(e)
 
 def draw_segmentation(segmentation_arr):
     return pil.fromarray(segmentation_arr)
@@ -95,11 +97,12 @@ def draw_video_segmentations(video, retrieved=False):
     # try:
     seg_path = os.path.join(t_dir, viz_dir)
     frame_arr_data = np.load(os.path.join(t_dir,  frame_arr_dir, video.gid() + '.npy'))
+    frame_arr_data = frame_arr_data
     for frame_n in range(frame_arr_data.shape[0]):
         for ent in video.data()['characters'] + video.data()['objects']:
-            outfile = os.path.join(seg_path, ent.gid() + '_segm.gif')
-            char_mask = np.load(os.path.join(t_dir,  segmentation_dir, ent.gid() + '_segm.npy'))
-            char_mask = np.expand_dims(char_mask, 3)
+            outfile = os.path.join(seg_path, ent.gid() + '_segm.gif').replace(' ', '_')
+            char_mask = np.load(os.path.join(t_dir,  segmentation_dir, ent.gid() + '_segm.npy.npz'))
+            char_mask = np.expand_dims(char_mask['arr_0'], 3)
             segm_arr = frame_arr_data * char_mask
             segmentation_frames = [draw_segmentation(segm_arr[frame_n]) for frame_n in
                                     range(frame_arr_data.shape[0])]
