@@ -5,6 +5,9 @@ video_mkd_template = """## Video ID {}
 
 ![animation]({})
 
+#### Background
+![background]({})
+
 #### Interpolation
 ![interpolation]({})
 
@@ -96,10 +99,12 @@ def gen_video_mkd(video):
         video.gid(),
         s3_doc_base_uri + video.gid() + '_keyframes.png',
         s3_doc_base_uri + video.gid() + '_bboxes.png',
+        s3_doc_base_uri + video.gid() + '_bgfill.png',
         video.display_gif(True),
         s3_doc_base_uri + video.gid() + '_interp.gif',
         s3_doc_base_uri + video.gid() + '_tracking.gif',
         segm_gif_str,
+
         video.description(),
         '\t' + video.setting(),
         format_characters(video.characters_present()),

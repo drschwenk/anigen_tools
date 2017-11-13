@@ -260,6 +260,26 @@ def generate_stage_3b_task_page(s3_base_paths, vid_anno, template_file='stage_3b
     return page_html
 
 
+def generate_baseline_a_task_page(s3_base_paths, vid_anno, match_anno, template_file='baseline_a.html'):
+    env = Environment(loader=FileSystemLoader('hit_templates'))
+    template = env.get_template(template_file)
+    vid_setting = vid_anno.setting()
+    image_url = s3_base_paths['gifs'] + vid_anno.gid() + '.gif'
+    match_url = s3_base_paths['gifs'] + match_anno.gid() + '.gif'
+    char_tuples = []
+    strings_to_match = []
+    for char in vid_anno.data()['characters']:
+        char_name = char.data()['entityLabel']
+        strings_to_match.append(char_name)
+        char_url = s3_base_paths['subtask'] + char.gid() + '_taskb.png'
+        char_tuples.append((char_url, char_name))
+    strings_to_match.append(vid_setting)
+    strings_to_match = 'string_join_token'.join(strings_to_match)
+    page_html = template.render(s3_uri_base=s3_base_path, image_url=image_url, match_url=match_url,
+                                char_images=char_tuples, setting=vid_setting, strings_to_match=strings_to_match)
+    return page_html
+
+
 def generate_stage_3_task_page(s3_base_paths, vid, template_file='stage_3a.html'):
     env = Environment(loader=FileSystemLoader('hit_templates'))
     template = env.get_template(template_file)
@@ -286,6 +306,11 @@ def prepare_stage_3_hit(s3_base_path, img_uri, static_parameters, task_generator
 
 def prepare_stage_3b_hit(s3_base_path, img_uri, static_parameters, task_generator=generate_stage_3b_task_page):
     question_html = task_generator(s3_base_path, img_uri)
+    return build_hit_params(question_html, static_parameters)
+
+
+def prepare_baseline_a_hit(s3_base_path, img_uri, match_uri, static_parameters, task_generator=generate_baseline_a_task_page):
+    question_html = task_generator(s3_base_path, img_uri, match_uri)
     return build_hit_params(question_html, static_parameters)
 
 

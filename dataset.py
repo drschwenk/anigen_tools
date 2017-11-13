@@ -124,8 +124,8 @@ class FlintstonesDataset(object):
         to_release = copy.deepcopy(self)
         complete = to_release.filter_videos(
             {'stage': 'stage_4b- objects', 'go': True}) + self.filter_videos(
-            {'stage': 'stage_4b- no objects', 'go': True}) + self.filter_videos(
-            {'stage': 'stage_4a', 'go': True})
+            {'stage': 'stage_4b- no objects', 'go': True}) #+ self.filter_videos(
+            # {'stage': 'stage_4a', 'go': True}))
 
         keys_to_del = ['status', 'labelSpan', 'localID', 'originalSpelling']
 
