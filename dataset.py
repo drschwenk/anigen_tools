@@ -362,13 +362,17 @@ class VideoAnnotation(object):
             x_offset += im.size[0]
         return combined_img
 
-    def get_key_frame_images(self, local=True):
+    def get_key_frame_images(self, local=True, spec_frame=None):
+        if not spec_frame:
+            keyframes = self.keyframe_postfixes
+        else:
+            keyframes = self.keyframe_postfixes[spec_frame:spec_frame + 1]
         if local:
             local_path = '/Users/schwenk/wrk/animation_gan/ai2-vision-animation-gan/annotation_data/still_frames/'
-            frame_paths = [''.join([local_path, self.gid(), pfix]) for pfix in self.keyframe_postfixes]
+            frame_paths = [''.join([local_path, self.gid(), pfix]) for pfix in keyframes]
             frame_images = [pilImage.open(fp) for fp in frame_paths]
         else:
-            frame_urls = [''.join([self.properties['s3_still_base'], self.gid(), pfix]) for pfix in self.keyframe_postfixes]
+            frame_urls = [''.join([self.properties['s3_still_base'], self.gid(), pfix]) for pfix in keyframes]
             frame_images = [pilImage.open(requests.get(f_url, stream=True).raw) for f_url in frame_urls]
         return frame_images
 
