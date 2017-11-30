@@ -1,10 +1,11 @@
 import cv2
+import os
 import numpy as np
 import PIL.Image as pil
 from tqdm import tqdm
 import copy
 import numpy_indexed as npi
-from bboxes import comp_box_center
+from .bboxes import comp_box_center
 
 data_dir = '/Users/schwenk/wrk/animation_gan/dataset/v2p0/trajectories'
 tracking_dir = 'tracking'
@@ -24,8 +25,9 @@ def filter_chars(vid, n_chars = None, chars_required=None):
 
 
 def filter_description(vid, contains=(), doesnot_contain=()):
-    contains_satisfied = sum([phrase.lower() in vid.description() for phrase in contains]) == len(contains)
-    doesnot_contains_satisfied = sum([phrase.lower() not in vid.description() for phrase in doesnot_contain]) == len(doesnot_contain)
+    contains_satisfied = sum([phrase.lower() in vid.description().lower() for phrase in contains]) == len(contains)
+    doesnot_contains_satisfied = sum([phrase.lower() not in vid.description().lower() for phrase in doesnot_contain]) \
+                                 == len(doesnot_contain)
     return contains_satisfied and doesnot_contains_satisfied
 
 
@@ -66,10 +68,10 @@ def draw_trajectory(traj_img, curve, mag):
     if curve[-1][0] == 0 or curve[0][0] == 0:
         return
     if np.linalg.norm(curve[-1] - curve[0]) < movement_thresh:
-        cv2.circle(traj_img, tuple(curve[0]), 1, (100, 0, 0), -1)
+        cv2.circle(traj_img, tuple(curve[0]), 5, (0, 0, 100), -1)
         return
     for idx, point in enumerate(curve):
-        p_size = 1
+        p_size = 2
         if idx == 0 or idx == n_points - 1:
             p_size = 4
         pf = idx / n_points

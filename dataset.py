@@ -108,7 +108,7 @@ class FlintstonesDataset(object):
     def sorted_by_episode(self):
         return sorted(self.data, key=lambda x: x.gid())
 
-    def generate_release_version(self, version, out_dir='dataset'):
+    def generate_release_version(self, version, complete_vids=None, out_dir='dataset'):
 
         def delete_keys_from_dict(dict_del, lst_keys):
             for k in lst_keys:
@@ -122,17 +122,17 @@ class FlintstonesDataset(object):
             return dict_del
 
         to_release = copy.deepcopy(self)
-        complete = to_release.filter_videos(
-            {'stage': 'stage_4b- objects', 'go': True}) + self.filter_videos(
-            {'stage': 'stage_4b- no objects', 'go': True}) #+ self.filter_videos(
-            # {'stage': 'stage_4a', 'go': True}))
+        if not complete_vids:
+            complete_vids = to_release.filter_videos(
+                {'stage': 'stage_4b- objects', 'go': True}) + self.filter_videos(
+                {'stage': 'stage_4b- no objects', 'go': True})
 
         keys_to_del = ['status', 'labelSpan', 'localID', 'originalSpelling']
 
-        for vid in complete:
+        for vid in complete_vids:
             vid._data['characters'] = [char.data() for char in vid._data['characters']]
             vid._data['objects'] = [obj.data() for obj in vid._data['objects']]
-        ds_json = [delete_keys_from_dict(vid._data, keys_to_del) for vid in complete]
+        ds_json = [delete_keys_from_dict(vid._data, keys_to_del) for vid in complete_vids]
 
         out_file = os.path.join(out_dir, 'dataset_v{}.json'.format(version))
         with open(out_file, 'w') as f:
@@ -546,7 +546,7 @@ class VideoAnnotation(object):
                 if obj == body_part or obj == body_part + 's':
                     # self.body_part_assignment(obj)
                     # return False
-                    return True
+                    return False
             return True
 
         this_stage_removal_reason = "missing stage4a annotation"
@@ -656,14 +656,12 @@ class VideoAnnotation(object):
                 if ent._data['entityLabel'].lower() in self.main_characters_lower:
                     ent_spans = self.get_char_spans(ent)
                     ent._data['entitySpan'] = ent_spans
-
                     continue
                 if comp_chars:
                     ent_spans = self.get_char_spans(ent)
                 else:
                     ent_spans = self.convert_obj_pos_to_span(ent)
                 ent._data['entitySpan'] = ent_spans
-                # print(ent._data['entityLabel'], ent._data['entitySpan'])
                 for idx, chunk_span in enumerate(chunk_spans):
                     # print(ent._data['entityLabel'])
                     # print(ent_spans, chunk_span, chunk_names[idx])
@@ -680,7 +678,6 @@ class VideoAnnotation(object):
                         ent._data['labelNPC'] = chunk_names[idx]
             except IndexError:
                 pass
-                # print(ent.gid())
 
 
 class BaseAnnotation(object):
