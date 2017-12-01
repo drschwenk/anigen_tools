@@ -64,7 +64,7 @@ def segment_entity_rect(img, rect):
 
 
 def scale_box(bbox):
-    bb = bbox.reshape(2, 2)
+    bb = deepcopy(bbox).reshape(2, 2)
     bb[:, 0] = bb[:, 0] * scale_down
     bb[:, 1] = bb[:, 1] * scale_down * asp_ratio
     return bb.reshape(4,)
@@ -93,18 +93,22 @@ def segment_all_video_entities(video, retrieved=False):
             print(e)
 
 
-def segment_video(video, frame_arr_data):
+def segment_video(video, n_super=1000):
     t_dir = trajectories_dir
     seg_path = os.path.join(t_dir, segmentation_dir)
+    frame_arr_data = np.load(os.path.join(t_dir, frame_arr_dir, video.gid() + '.npy'))
     for ent in video.data()['characters'] + video.data()['objects']:
         char_mask = []
         outfile = os.path.join(seg_path, ent.gid() + '_segm.npy')
+        entity_rects = np.load(os.path.join(t_dir, tracking_dir, ent.gid() + '.npy'))
+        other_ents = [oe for oe in video.data()['characters'] + video.data()['objects'] if oe.gid() != ent.gid()]
+        other_rects = [np.load(os.path.join(t_dir, tracking_dir, oe.gid() + '.npy')) for oe in other_ents]
         try:
             for frame_n in range(frame_arr_data.shape[0]):
-                entity_rects = np.load(os.path.join(t_dir, tracking_dir, ent.gid() + '.npy'))
                 scaled_ent_box = scale_box(entity_rects[frame_n])
-                char_mask.append(segment_entity_rect(frame_arr_data[frame_n], scaled_ent_box))
-        except:
+                scaled_other = [scale_box(oer[frame_n]) for oer in other_rects]
+                char_mask.append(segment_entity(frame_arr_data[frame_n], scaled_ent_box, scaled_other, n_super))
+        except FileNotFoundError:
             char_mask = np.zeros(frame_arr_data.shape[:3], np.uint8)
         try:
             np.savez_compressed(outfile, np.array(char_mask))
@@ -146,15 +150,17 @@ def compute_iou(segment1, segment2, area1=0, area2=0):
     area_self_overlap2 = area_intersection / (area2 + 0.01)
     return area_overlap, area_self_overlap1, area_self_overlap2
 
-def create_entity_segment(ent, frame_size=(128, 128)):
+
+def create_bbox_segment(rect, frame_size=(128, 128)):
     segment = np.zeros(frame_size, dtype=np.uint8)
-    rect = scale_box(np.array(ent.rect())[1])
+    # rect = scale_box(np.array(ent.rect())[1])
     segment[rect[0]: rect[2], rect[1]: rect[3]] = 1
     return segment.T
 
 
 def partition_image(img, n_segments):
-    superpixels = slic(img, n_segments, sigma = 5, multichannel=True, convert2lab=True, compactness=10)
+    # lab_img = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
+    superpixels = slic(img, n_segments, sigma=1, multichannel=True, convert2lab=True, slic_zero=True, enforce_connectivity=False)
     ent_rag = graph.rag_mean_color(img, superpixels)
 
     regions = graph.merge_hierarchical(superpixels, ent_rag, thresh=10, rag_copy=False,
@@ -166,36 +172,41 @@ def partition_image(img, n_segments):
     return regions
 
 
-def rough_segment(regions, bbox_mask, frame, inclusion_thresh=0.7):
-    wilma_reg_overlaps = []
+def rough_segment(regions, bbox_mask, inclusion_thresh=0.9):
+    ent_reg_overlaps = []
     for reg in np.unique(regions):
         reg_mask = regions == reg
         reg_mask = reg_mask.astype(np.uint8)
         reg_iou = compute_iou(bbox_mask, reg_mask)[2]
-        wilma_reg_overlaps.append(reg_iou)
-    overlapping_regions = pd.Series(wilma_reg_overlaps).sort_values(ascending=False)
+        ent_reg_overlaps.append(reg_iou)
+    overlapping_regions = pd.Series(ent_reg_overlaps).sort_values(ascending=False)
     regions_to_include = overlapping_regions.index[overlapping_regions > inclusion_thresh]
     ent_segment = np.isin(regions, regions_to_include).astype(np.uint8)
     #     masked_ent = frame * np.tile(np.expand_dims(ent_segment, 2), [1, 1, 3])
     return ent_segment
 
 
-def grabcut_from_rough_mask(ent_mask, img):
-    mask = np.where(ent_mask == 1, cv2.GC_PR_FGD, 0).astype('uint8')
-    mask[ent_mask == 0] = cv2.GC_BGD
-    # mask[newmask == 255] = cv2.GC_FGD
+def grabcut_from_rough_mask(ent_mask, img, combined_other_mask):
+    mask = np.where(ent_mask == 1, cv2.GC_PR_FGD, cv2.GC_BGD).astype('uint8')
     bgdModel = np.zeros((1, 65), np.float64)
     fgdModel = np.zeros((1, 65), np.float64)
-    ref_mask, bgdModel, fgdModel = cv2.grabCut(img, mask, None, bgdModel, fgdModel, 5, cv2.GC_INIT_WITH_MASK)
-    ref_mask = np.where((ref_mask == 2) | (ref_mask == 0), 0, 1).astype('uint8')
-    img = img * ref_mask[:, :, np.newaxis]
-    return img, ref_mask
+    cv2.grabCut(img, mask, None, bgdModel, fgdModel, 1, cv2.GC_INIT_WITH_MASK)
+    ref_mask = np.where((mask == 3), 1, 0).astype('uint8')
+    # ref_mask = ref_mask * ent_mask
+    # if np.array(combined_other_mask).any():
+    #     ref_mask = ref_mask * (combined_other_mask == 0)
+    return ref_mask
 
 
-def segment_entity(frame, entity, n_segments=100):
+def segment_entity(frame, ent_rect, other_ent_rects, n_segments):
     img = deepcopy(frame)
+    ent_bbox_mask = create_bbox_segment(ent_rect)
+    other_bbox_mask = [create_bbox_segment(oer) for oer in other_ent_rects]
+    combined_other_mask = other_bbox_mask[0].copy()
+    # for ent_mask in other_bbox_mask[1:]:
+    #     combined_other_mask += ent_mask
     img_regions = partition_image(img, n_segments)
-    ent_bbox = create_entity_segment(entity)
-    rough_ent = rough_segment(img_regions, ent_bbox, img)
-    ent_segmentation, mask = grabcut_from_rough_mask(rough_ent, img)
-    return ent_segmentation, rough_ent, ent_bbox, mask
+    rough_ent = rough_segment(img_regions, ent_bbox_mask)
+    ent_segmentation = grabcut_from_rough_mask(rough_ent, img, combined_other_mask)
+    # return ent_segmentation, rough_ent, ent_bbox, mask
+    return ent_segmentation
