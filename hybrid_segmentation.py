@@ -186,7 +186,7 @@ def rough_segment(regions, bbox_mask, inclusion_thresh=0.9):
     return ent_segment
 
 
-def grabcut_from_rough_mask(ent_mask, img, combined_other_mask):
+def grabcut_from_rough_mask(ent_mask, img):
     mask = np.where(ent_mask == 1, cv2.GC_PR_FGD, cv2.GC_BGD).astype('uint8')
     bgdModel = np.zeros((1, 65), np.float64)
     fgdModel = np.zeros((1, 65), np.float64)
@@ -198,15 +198,13 @@ def grabcut_from_rough_mask(ent_mask, img, combined_other_mask):
     return ref_mask
 
 
-def segment_entity(frame, ent_rect, other_ent_rects, n_segments):
+def segment_entity(frame, ent_rect, n_segments):
     img = deepcopy(frame)
     ent_bbox_mask = create_bbox_segment(ent_rect)
-    other_bbox_mask = [create_bbox_segment(oer) for oer in other_ent_rects]
-    combined_other_mask = other_bbox_mask[0].copy()
     # for ent_mask in other_bbox_mask[1:]:
     #     combined_other_mask += ent_mask
     img_regions = partition_image(img, n_segments)
     rough_ent = rough_segment(img_regions, ent_bbox_mask)
-    ent_segmentation = grabcut_from_rough_mask(rough_ent, img, combined_other_mask)
+    ent_segmentation = grabcut_from_rough_mask(rough_ent, img)
     # return ent_segmentation, rough_ent, ent_bbox, mask
     return ent_segmentation
