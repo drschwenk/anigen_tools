@@ -312,7 +312,9 @@ class VideoAnnotation(object):
             'belly',
             'hair',
             'face',
-            'waist'
+            'waist',
+            'nose',
+            'beard'
         ]
 
         self.main_characters_lower = {
@@ -388,21 +390,25 @@ class VideoAnnotation(object):
         combined_image = np.hstack([np.asarray(img) for img in frames_with_boxes if img.any()])
         return pilImage.fromarray(combined_image)
 
-    def draw_char_boxes(self, img_frames):
+    def draw_char_boxes(self, img_frames, chars=None):
         drawn_frames = []
         for frame_idx, frame_img in enumerate(img_frames):
             open_cv_image = np.array(frame_img)
             open_cv_image = open_cv_image[:, :, ::].copy()
-            for char in self._data['characters']:
+            if chars:
+                chars_to_draw = chars
+            else:
+                chars_to_draw = self.data()['characters']
+            for char in chars_to_draw:
                 try:
                     char_box = np.array(char.rect(frame_idx)).reshape(2, 2)
                 except ValueError:
                     char_box = np.array([0, 0, 0, 0]).reshape(2, 2)
                 char_idn = char.gid().split('_')[-1]
-                cv2.putText(open_cv_image,
-                            char_idn, tuple(char_box[0] + np.array([0, 25])),
-                            cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2)
-                cv2.rectangle(open_cv_image, tuple(char_box[0]), tuple(char_box[1]), color=(0, 255, 255), thickness=2)
+                # cv2.putText(open_cv_image,
+                #             char_idn, tuple(char_box[0] + np.array([0, 25])),
+                #             cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2)
+                cv2.rectangle(open_cv_image, tuple(char_box[0]), tuple(char_box[1]), color=(0, 255, 0), thickness=2)
             drawn_frames.append(open_cv_image)
         return drawn_frames
 

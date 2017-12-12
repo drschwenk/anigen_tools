@@ -71,6 +71,15 @@ def generate_stage_4b_task_page(img_id, formatted_description, target, template_
     return page_html
 
 
+def generate_segm_anno_task_page(ent, s3_base, template_file='img_seg.html'):
+    img_id = ent.gid() + '_bb.png'
+    ent_label = ent.data()['entityLabel']
+    env = Environment(loader=FileSystemLoader('hit_templates'))
+    template = env.get_template(template_file)
+    page_html = template.render(base_url=s3_base, image_name=img_id, entity_label=ent_label)
+    return page_html
+
+
 def generate_stage_4_task_page(s3_base_path, img_id, n_chars, template_file='stage_4.html'):
     pages = []
     for char_idx in range(n_chars):
@@ -89,7 +98,6 @@ def generate_simpler_supl_task_page(s3_base_path, img_id, char_id, template_file
     char_img = char_id
     img_id = img_id + '_taskb.png'
     page_html = template.render(s3_uri_base=s3_base_path, image_id=img_id, char_img=char_img)
-    page_html = page_html
     return page_html
 
 
@@ -337,6 +345,12 @@ def prepare_stage_4b_hit(video, static_parameters):
         question_html.append(generate_stage_4b_task_page(still_id,
                                                          rejoin_formatted_desc(description, target_span), target_obj))
     return [build_hit_params(qhtml, static_parameters) for qhtml in question_html]
+
+
+def prepare_segm_anno_hit(video, s3_base_path, static_parameters):
+    entities = video._data['objects'] + video._data['characters']
+    hit_html = [generate_segm_anno_task_page(ent, s3_base_path) for ent in entities]
+    return [build_hit_params(hhtml, static_parameters) for hhtml in hit_html]
 
 
 def rejoin_formatted_desc(description, replacement_span):

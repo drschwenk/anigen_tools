@@ -1,3 +1,4 @@
+from __future__ import division
 import numpy as np
 import cv2
 import os
@@ -208,3 +209,17 @@ def segment_entity(frame, ent_rect, n_segments):
     ent_segmentation = grabcut_from_rough_mask(rough_ent, img)
     # return ent_segmentation, rough_ent, ent_bbox, mask
     return ent_segmentation
+
+
+def gen_single_segmentation(video, ent, n_segments=500, frame_n=30):
+    test_arr_img = np.load(frame_arr_dir + video.gid() + '.npy')
+    anim_frame = test_arr_img[frame_n]
+    ent_rects = np.load('./trajectories/tracking/' + ent.gid() + '.npy')
+    ent_rects = ent_rects[frame_n]
+    img = deepcopy(anim_frame)
+    scaled_ent_box = scale_box(ent_rects)
+    ent_bbox_mask = create_bbox_segment(scaled_ent_box)
+    img_regions = partition_image(img, n_segments)
+    rough_ent = rough_segment(img_regions, ent_bbox_mask, 0.5)
+    ent_segmentation = grabcut_from_rough_mask(rough_ent, img)
+    return pil.fromarray(anim_frame * np.tile(np.expand_dims(ent_segmentation, 2), [1, 1, 3]))

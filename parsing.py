@@ -42,10 +42,6 @@ def save_video_cont_parses(custom_parse_trees, vid):
     return saved_paths
 
 
-def coref(doc):
-    pass
-
-
 def parse_description(vid_text, g_vid, nlp, parser):
     vid_text = vid_text.replace('  ', ' ')
     doc = nlp(vid_text)
@@ -55,7 +51,7 @@ def parse_description(vid_text, g_vid, nlp, parser):
     }
     constituent_parse = const_parse(vid_text, parser)
     pos_tags = [sent.pos() for sent in constituent_parse]
-    parse_trees = format_parse(constituent_parse)
+    # parse_trees = format_parse(constituent_parse)
     # parse_file_paths = save_video_cont_parses(parse_trees, g_vid)
     parses = {
                 'noun_phrase_chunks': noun_phrase_chunks,

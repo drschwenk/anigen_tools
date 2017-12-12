@@ -109,10 +109,6 @@ def draw_segmentation(segmentation_arr):
     return pil.fromarray(segmentation_arr)
 
 
-def degrade_colorspace(image):
-    return
-
-
 def draw_video_segmentations(video, frame_arr_data=np.array([]), retrieved=False):
     if retrieved:
         t_dir = './retrieved/' + trajectories_dir
