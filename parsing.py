@@ -1,119 +1,139 @@
-import os
-import spacy
-import dill
-from nltk.parse.stanford import StanfordParser
 from nltk.tokenize import sent_tokenize
+from nltk.tokenize.punkt import PunktSentenceTokenizer, PunktParameters
 from nltk.tokenize import word_tokenize
-from nltk.tree import ParentedTree
+from nltk.tokenize import wordpunct_tokenize
+import string
+import re
+
+punct_set = set(string.punctuation)
+punct_set.remove('.')
+punkt_param = PunktParameters()
+punkt_param.abbrev_types = {'dr', 'vs', 'mr', 'mrs', 'prof', 'inc', 'ms'}
+sentence_splitter = PunktSentenceTokenizer(punkt_param)
 
 
-# nlp = spacy.load('en')
-# core_nlp_base = '/Users/schwenk/wrk/animation_gan/phrase_cues/deps/stanford_core_nlp/stanford-corenlp-full-2017-06-09/'
-#
-# parser = StanfordParser(path_to_jar=core_nlp_base + 'stanford-corenlp-3.8.0.jar',
-#                         path_to_models_jar=core_nlp_base +'stanford-corenlp-3.8.0-models.jar')
-
-const_parse_path = '/Users/schwenk/wrk/animation_gan/build_dataset/dataset'
-const_parse_dir = 'const_parses'
+# def const_parse(doc, parser):
+#     raw_sentences = sentence_splitter.tokenize(doc)
+#     sentences = [' '.join([w for w in wordpunct_tokenize(s) if set(w) - punct_set]).replace(' .',  '.') for s in raw_sentences]
+#     sent_parses = [list(i)[0] for i in parser.raw_parse_sents(sentences)]
+#     return sent_parses
 
 
-def const_parse(doc, parser):
-    raw_sentences = sent_tokenize(doc)
-    sentences = [' '.join(word_tokenize(s)) for s in raw_sentences]
-    sent_parses = [list(i)[0] for i in parser.raw_parse_sents(sentences)]
-    return sent_parses
+def check_sub_subtrees(subtree):
+    for tree in list(subtree.subtrees())[1:]:
+        if tree.label() == 'NP':
+            return False
+    return True
 
 
-def write_tree(custom_tree, vid, sent_n):
-    out_file = os.path.join(const_parse_dir, '{}_sent_{}.pkl'.format(vid, sent_n))
-    out_path = os.path.join(const_parse_path, out_file)
-    custom_tree.pickle_self(out_path)
-    return out_file
+def apply_fixes(raw_str):
+    raw_str = raw_str.replace(' \'', '\'')
+    return raw_str
+
+def extract_np(psent):
+    for subtree in psent.subtrees():
+        if subtree.label() == 'NP' and check_sub_subtrees(subtree):
+            subprod = subtree.productions()[0].unicode_repr()
+            if 'NN' in subprod or 'NNP' in subprod:
+                # print(subtree.leaves())
+                yield ' '.join(word for word in subtree.leaves()).replace(' \'', '\'')
 
 
-def format_parse(parsed_sentences):
-    parented_trees = [ParentedTree.convert(sent) for sent in parsed_sentences]
-    custom_trees = [Tree(tree) for tree in parented_trees]
-    return custom_trees
+def compute_token_spans(const_parse_sents, txt):
+    offset = 0
+    for const_parse_sent in const_parse_sents:
+        tokens = const_parse_sent.leaves()
+        for token in tokens:
+            offset = txt.find(token, offset)
+            yield token, offset, offset + len(token)
+            offset += len(token)
 
 
-def save_video_cont_parses(custom_parse_trees, vid):
-    saved_paths = [write_tree(tree, vid, idx) for idx, tree in enumerate(custom_parse_trees)]
-    return saved_paths
+def assign_word_spans(noun_phrases_w_spans, doc, token_spans):
+    # print(doc)
+    chunk_spans = []
+    seen_chunks = []
+    # print(token_spans)
+    for np in noun_phrases_w_spans:
+        # print(np)
+        char_spans = [(m.start(), m.end() - 1) for m in re.finditer(np + '\s|' + np + '\.', doc)]
+        # print(seen_chunks)
+        occ_n = seen_chunks.count(np)
+        # print(occ_n)
+        # print(char_spans)
+        start, end = char_spans[occ_n]
+        start_w, end_w = None, None
+        for w_idx, token_span in enumerate(token_spans):
+            token, ts, te = token_span
+            if ts == start:
+                start_w = w_idx
+            if te == end:
+                end_w = w_idx + 1
+        if type(start_w) == int and type(end_w) == int:
+            chunk_spans.append([start_w, end_w])
+        else:
+            print(np)
+            print('failed')
+            raise IndexError
+        np_pieces = np.split()
+        seen_chunks += list(set(np_pieces).union(set([np])))
+    return chunk_spans
 
 
-def parse_description(vid_text, g_vid, nlp, parser):
-    vid_text = vid_text.replace('  ', ' ')
-    doc = nlp(vid_text)
-    noun_phrase_chunks = {
-        'chunks': [(np.start, np.end) for np in doc.noun_chunks],
-        'named_chunks': [np.text for np in doc.noun_chunks]
-    }
-    constituent_parse = const_parse(vid_text, parser)
+def np_chunker(doc, parsed_sents):
+    recovered_tokens = ' '.join([item for sublist in parsed_sents for item in sublist.leaves()]).replace(' .',  '.')
+    noun_phrases = [list(extract_np(sent)) for sent in parsed_sents]
+    # print(noun_phrases)
+    noun_phrases = [item for sublist in noun_phrases for item in sublist]
+    #     noun_phrase_spans = [list(extract_np_spans(doc, sent)) for sent in noun_phrases]
+    token_spans = list(compute_token_spans(parsed_sents, recovered_tokens))
+    # print(list(token_spans))
+    noun_phrase_spans = assign_word_spans(noun_phrases, recovered_tokens, token_spans)
+    return {'chunks': noun_phrase_spans, 'named_chunks': noun_phrases}
+
+
+def sanitize_text(d_text):
+    d_text = ' '.join(d_text.split())
+    d_text = re.sub(r'([a-z])\.([A-Z])', r'\1. \2', d_text)
+    if d_text[-1] != '.':
+        d_text += '.'
+    return d_text
+
+
+def parse_description(vid_text, nlp, parser):
+    vid_text = sanitize_text(vid_text)
+    raw_sentences = sentence_splitter.tokenize(vid_text)
+    try:
+        sentences = [' '.join([w for w in wordpunct_tokenize(s) if set(w) - punct_set]).replace(' .',  '.') for s in raw_sentences]
+        # sentences = raw_sentences
+        # print('here', sentences)
+        # docs = [nlp(sent) for sent in sentences]
+
+        # noun_phrase_chunks = {
+        #     'chunks': [[(np.start, np.end) for np in doc.noun_chunks] for doc in docs],
+        #     'named_chunks': [[np.text for np in doc.noun_chunks] for doc in docs]
+        # }
+        # constituent_parse = const_parse(vid_text, parser)
+        constituent_parse = [list(i)[0] for i in parser.raw_parse_sents(sentences)]
+        # return constituent_parse
+        # print([s.leaves() for s in constituent_parse])
+        noun_phrase_chunks = np_chunker(vid_text, constituent_parse)
+    except IndexError:
+        # sentences = [' '.join([w for w in word_tokenize(s) if set(w) - punct_set]).replace(' .',  '.') for s in raw_sentences]
+        constituent_parse = [list(i)[0] for i in parser.raw_parse_sents(raw_sentences)]
+        noun_phrase_chunks = np_chunker(vid_text, constituent_parse)
     pos_tags = [sent.pos() for sent in constituent_parse]
-    # parse_trees = format_parse(constituent_parse)
-    # parse_file_paths = save_video_cont_parses(parse_trees, g_vid)
+    # pos_tags = [(token.text, token.pos_, token.string) for token in doc]
+    pos_tags = [item for sublist in pos_tags for item in sublist]
     parses = {
-                'noun_phrase_chunks': noun_phrase_chunks,
-                'pos_tags': pos_tags,
-                # 'constituent_parse': parse_file_paths
-             }
-
-    return parses, constituent_parse
+        'noun_phrase_chunks': noun_phrase_chunks,
+        'pos_tags': pos_tags,
+    }
+    return parses
 
 
 def parse_video(video, nlp, parser):
-    vid_parse, cons_parse = parse_description(video.description(), video.gid(), nlp, parser)
+    # print(video.gid())
+    vid_parse = parse_description(video.description(), nlp, parser)
     video._data['parse'] = vid_parse
-    return cons_parse
-
-
-class Tree(object):
-    def __init__(self, nltk_parented_tree):
-        self.subtrees = []
-        self._node_lookup = {}
-        self.leaves = []
-        for node in list(nltk_parented_tree.subtrees()):
-            nkey = str(node.treeposition())
-            if len(node.leaves()) > 1 or len(list(node.subtrees())) > 1:
-                self.subtrees.append(Node(node))
-            else:
-                node.set_label(' '.join([node.label(), node.leaves()[0]]))
-                leaf_node = Node(node)
-                self.subtrees.append(leaf_node)
-                self.leaves.append(leaf_node)
-            self._node_lookup[nkey] = self.subtrees[-1]
-
-        self.root_node = [node for node in self.subtrees if node.value == 'ROOT'][0]
-        self.word_pos_to_node = {idx: node for idx, node in enumerate(self.leaves)}
-
-        for node in self.subtrees:
-            node.left_sibling = self._node_lookup.get(node.left_sibling)
-            node.right_sibling = self._node_lookup.get(node.right_sibling)
-            node.parent = self._node_lookup.get(node.parent)
-            node.children = [self._node_lookup.get(cn) for cn in node.children]
-
-    def pickle_self(self, out_path):
-        with open(out_path, 'wb') as f:
-            dill.dump(self, f, byref=False)
-
-
-class Node(object):
-    def __init__(self, nltk_node):
-        self.value = nltk_node.label()  # (tag,word/phrase)
-        self.left_sibling = Node.get_tree_position(nltk_node.left_sibling())  # Instance of class Node
-        self.right_sibling = Node.get_tree_position(nltk_node.right_sibling())  # Instance of class Node
-        self.parent = Node.get_tree_position(nltk_node.parent())  # Instance of class Node
-        child_subtrees = list(nltk_node.subtrees())
-        if len(child_subtrees) > 1:
-            self.children = [str(tree.treeposition()) for tree in child_subtrees if tree.parent() == child_subtrees[0]]
-        else:
-            self.children = []
-
-    @classmethod
-    def get_tree_position(cls, node):
-        if node:
-            return str(node.treeposition())
-        else:
-            return
 

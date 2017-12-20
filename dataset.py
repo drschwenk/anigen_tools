@@ -629,7 +629,18 @@ class VideoAnnotation(object):
         char_spans = [(m.start(), m.start() + len(char._data['entityLabel'])) for m in
                       re.finditer(char._data['entityLabel'].lower(), desc.lower())]
         word_spans = self.compute_word_spans()
+        # print(char_spans)
+        # print(word_spans)
+        # print(self.string_to_word_spans(char_spans[0], word_spans))
         return self.string_to_word_spans(char_spans[0], word_spans)
+
+    def get_char_spans_npc(self, char):
+        npidxs = self.data()['parse']['noun_phrase_chunks']['chunks']
+        nps = self.data()['parse']['noun_phrase_chunks']['named_chunks']
+        for npi in range(len(npidxs)):
+            if nps[npi].lower() in char.data()['entityLabel']:
+                return list(npidxs[npi])
+        return [0, 0]
 
     def compute_word_spans(self):
         raw_sentences = sent_tokenize(self.description())
@@ -682,6 +693,8 @@ class VideoAnnotation(object):
                             if chunk_names[idx] in object_npcs:
                                 continue
                         ent._data['labelNPC'] = chunk_names[idx]
+                        # print(chunk_span)
+                        ent._data['entitySpan'] = list(chunk_span)
             except IndexError:
                 pass
 
