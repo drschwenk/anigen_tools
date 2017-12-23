@@ -11,6 +11,13 @@ import PIL.Image as pilImage
 import cv2
 import re
 from IPython.display import Image
+from fuzzywuzzy import fuzz
+
+
+def sanitize_text(d_text):
+    d_text = ' '.join(d_text.split())
+    d_text = re.sub(r'([a-z])\.([A-Z])', r'\1. \2', d_text)
+    return d_text
 
 
 class FlintstonesDataset(object):
@@ -201,11 +208,15 @@ class FlintstonesDataset(object):
 
         for video_anno_obj in complete_vids:
             video_anno = video_anno_obj.data()
-            pos_tags = video_anno['parse']['pos_tags']
-            pos_tags_concat = concat_pos_tags(pos_tags)
-            coref = video_anno['parse']['coref']
-            coref_span_sets = get_coref_cluster_span_sets(coref)
-            npcs = video_anno['parse']['noun_phrase_chunks']
+            try:
+                pos_tags = video_anno['parse']['pos_tags']
+                pos_tags_concat = concat_pos_tags(pos_tags)
+                coref = video_anno['parse']['coref']
+                coref_span_sets = get_coref_cluster_span_sets(coref)
+                npcs = video_anno['parse']['noun_phrase_chunks']
+            except KeyError:
+                count['parse key error'].append(video_anno_obj.gid())
+                break
             for entity_anno_obj in video_anno['characters']+video_anno['objects']:
                 entity_anno = entity_anno_obj.data()
                 if 'None' == entity_anno['entityLabel']:
@@ -219,13 +230,12 @@ class FlintstonesDataset(object):
                 if 'entitySpan' not in entity_anno:
                     count['missing entity span'].append(video_anno_obj.gid())
                     break
-
-                referring_idxs = identify_referring_indices(
-                    npc,
-                    entity_anno['entitySpan'],
-                    npcs,
-                    coref_span_sets)
                 try:
+                    referring_idxs = identify_referring_indices(
+                        npc,
+                        entity_anno['entitySpan'],
+                        npcs,
+                        coref_span_sets)
                     referring_words = \
                         [pos_tags_concat[idx] for idx in referring_idxs]
                 except:
@@ -638,9 +648,12 @@ class VideoAnnotation(object):
         npidxs = self.data()['parse']['noun_phrase_chunks']['chunks']
         nps = self.data()['parse']['noun_phrase_chunks']['named_chunks']
         for npi in range(len(npidxs)):
-            if nps[npi].lower() in char.data()['entityLabel']:
+            # print(char.data()['entityLabel'].lower(),  nps[npi].lower())
+            if char.data()['entityLabel'].lower() in nps[npi].lower() or nps[npi].lower() in char.data()['entityLabel'].lower():
                 return list(npidxs[npi])
-        return [0, 0]
+            if fuzz.token_set_ratio(char.data()['entityLabel'].lower(), nps[npi].lower()) > 90:
+                return list(npidxs[npi])
+        return None
 
     def compute_word_spans(self):
         raw_sentences = sent_tokenize(self.description())
@@ -665,35 +678,80 @@ class VideoAnnotation(object):
                 last_seen.append(word_idx)
         return last_seen[0], last_seen[-1] + 1
 
+    def assign_word_spans(self, ent):
+        chunk_spans = []
+        seen_chunks = []
+        token_spans = self.data()['parse']['noun_phrase_chunks']['token_spans']
+        doc = self.data()['parse']['noun_phrase_chunks']['aligned_description'].lower()
+        noun_phrases_w_spans = self.data()['parse']['noun_phrase_chunks']['named_chunks']
+        # for np in noun_phrases_w_spans:
+        np = ent.data()['entityLabel'].lower().strip()
+        char_spans = [(m.start(), m.end() - 1) for m in re.finditer(np + '\s|' + np + '\.', doc)]
+        if not char_spans:
+            np = sanitize_text(np)
+            for punct in [',', '-', '/', '.']:
+                if punct not in np:
+                    continue
+                if punct not in doc or punct == np[-1]:
+                    if punct + ' ' in np or punct == np[-1]:
+                        np = np.replace(punct, '')
+                    else:
+                        np = np.replace(punct, ' ')
+            char_spans = [(m.start(), m.end() - 1) for m in re.finditer(np + '\s|' + np + '\.', doc)]
+            # print(char_spans)
+            # print(np, doc)
+        occ_n = seen_chunks.count(np)
+        start, end = char_spans[occ_n]
+        start_w, end_w = None, None
+        for w_idx, token_span in enumerate(token_spans):
+            token, ts, te = token_span
+            if ts == start:
+                start_w = w_idx
+            if te == end:
+                end_w = w_idx + 1
+        if type(start_w) == int and type(end_w) == int:
+            chunk_spans.append([start_w, end_w])
+        else:
+            print(np)
+            print('failed')
+            raise IndexError
+        np_pieces = np.split()
+        seen_chunks += list(set(np_pieces).union(set([np])))
+        return chunk_spans[-1]
+
     def assign_ent_npcs(self, entites, comp_chars=True):
         chunk_spans = self._data['parse']['noun_phrase_chunks']['chunks']
         chunk_names = self._data['parse']['noun_phrase_chunks']['named_chunks']
         for ent in entites:
+            # print(ent._data['entityLabel'])
             try:
                 if ent._data['entityLabel'].lower() in self.main_characters_lower:
-                    ent_spans = self.get_char_spans(ent)
-                    ent._data['entitySpan'] = ent_spans
-                    continue
-                if comp_chars:
-                    ent_spans = self.get_char_spans(ent)
+                    ent_spans = self.get_char_spans_npc(ent)
+                    if ent_spans:
+                        ent._data['entitySpan'] = ent_spans
+                        continue
+                # if comp_chars:
+                #     ent_spans = self.assign_word_spans(ent)
                 else:
-                    ent_spans = self.convert_obj_pos_to_span(ent)
+                    # ent_spans = self.convert_obj_pos_to_span(ent)
+                    ent_spans = self.assign_word_spans(ent)
+                    # print(ent_spans)
                 ent._data['entitySpan'] = ent_spans
+                # print(ent_spans)
                 for idx, chunk_span in enumerate(chunk_spans):
-                    # print(ent._data['entityLabel'])
                     # print(ent_spans, chunk_span, chunk_names[idx])
                     # print(self.check_overlap(ent_spans, chunk_span))
+                    # print(ent_spans)
                     if self.check_overlap(ent_spans, chunk_span):
-                        if comp_chars:
-                            try:
-                                object_npcs = [obj.data()['labelNPC'] for obj in self.data()['objects']]
-                            except KeyError:
-                                print('fail', ent.gid())
-                                continue
-                            if chunk_names[idx] in object_npcs:
-                                continue
+                        # if comp_chars:
+                            # try:
+                            #     object_npcs = [obj.data()['labelNPC'] for obj in self.data()['objects']]
+                            # except KeyError:
+                            #     print('fail', ent.gid())
+                            #     continue
+                            # if chunk_names[idx] in object_npcs:
+                            #     continue
                         ent._data['labelNPC'] = chunk_names[idx]
-                        # print(chunk_span)
                         ent._data['entitySpan'] = list(chunk_span)
             except IndexError:
                 pass

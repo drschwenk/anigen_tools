@@ -11,6 +11,18 @@ punkt_param = PunktParameters()
 punkt_param.abbrev_types = {'dr', 'vs', 'mr', 'mrs', 'prof', 'inc', 'ms'}
 sentence_splitter = PunktSentenceTokenizer(punkt_param)
 
+main_characters_lower = {
+    "fred": 'Fred',
+    "wilma": 'Wilma',
+    "mr slate": "Mr. Slate",
+    "barney": "Barney",
+    "betty": "Betty",
+    "pebbles": "Pebbles",
+    "dino": "Dino",
+    "baby puss": "Baby Puss",
+    "hoppy": "Hoppy",
+    "bamm bamm": "Bamm Bamm"
+}
 
 # def const_parse(doc, parser):
 #     raw_sentences = sentence_splitter.tokenize(doc)
@@ -21,7 +33,7 @@ sentence_splitter = PunktSentenceTokenizer(punkt_param)
 
 def check_sub_subtrees(subtree):
     for tree in list(subtree.subtrees())[1:]:
-        if tree.label() == 'NP':
+        if tree.label() in ['NP']:
             return False
     return True
 
@@ -30,13 +42,18 @@ def apply_fixes(raw_str):
     raw_str = raw_str.replace(' \'', '\'')
     return raw_str
 
+
 def extract_np(psent):
     for subtree in psent.subtrees():
         if subtree.label() == 'NP' and check_sub_subtrees(subtree):
             subprod = subtree.productions()[0].unicode_repr()
             if 'NN' in subprod or 'NNP' in subprod:
-                # print(subtree.leaves())
-                yield ' '.join(word for word in subtree.leaves()).replace(' \'', '\'')
+                if 'CC' not in subprod:
+                    yield ' '.join(word for word in subtree.leaves()).replace(' \'', '\'')
+                else:
+                    for st in subtree.subtrees():
+                        if st.label() in ['NNP', 'NN']:
+                            yield st.leaves()[0]
 
 
 def compute_token_spans(const_parse_sents, txt):
@@ -50,10 +67,8 @@ def compute_token_spans(const_parse_sents, txt):
 
 
 def assign_word_spans(noun_phrases_w_spans, doc, token_spans):
-    # print(doc)
     chunk_spans = []
     seen_chunks = []
-    # print(token_spans)
     for np in noun_phrases_w_spans:
         # print(np)
         char_spans = [(m.start(), m.end() - 1) for m in re.finditer(np + '\s|' + np + '\.', doc)]
@@ -89,7 +104,8 @@ def np_chunker(doc, parsed_sents):
     token_spans = list(compute_token_spans(parsed_sents, recovered_tokens))
     # print(list(token_spans))
     noun_phrase_spans = assign_word_spans(noun_phrases, recovered_tokens, token_spans)
-    return {'chunks': noun_phrase_spans, 'named_chunks': noun_phrases}
+    return {'chunks': noun_phrase_spans, 'named_chunks': noun_phrases, 'token_spans': token_spans,
+            'aligned_description': recovered_tokens}
 
 
 def sanitize_text(d_text):
@@ -97,6 +113,8 @@ def sanitize_text(d_text):
     d_text = re.sub(r'([a-z])\.([A-Z])', r'\1. \2', d_text)
     if d_text[-1] != '.':
         d_text += '.'
+    for lc, uc in main_characters_lower.items():
+        d_text = d_text.replace(lc, uc)
     return d_text
 
 
