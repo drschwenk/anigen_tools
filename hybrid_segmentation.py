@@ -211,10 +211,18 @@ def segment_entity(frame, ent_rect, n_segments):
     return ent_segmentation
 
 
+def get_vid_frame_data(vid_gid):
+    return np.load(os.path.join(trajectories_dir, frame_arr_dir, vid_gid + '.npy'))
+
+
+def get_ent_tracking(ent):
+    return np.load('./trajectories/tracking/' + ent.gid() + '.npy')
+
+
 def gen_single_segmentation(video, ent, n_segments=500, frame_n=30):
-    test_arr_img = np.load(frame_arr_dir + video.gid() + '.npy')
+    test_arr_img = get_vid_frame_data(video.gid())
     anim_frame = test_arr_img[frame_n]
-    ent_rects = np.load('./trajectories/tracking/' + ent.gid() + '.npy')
+    ent_rects = get_ent_tracking(ent)
     ent_rects = ent_rects[frame_n]
     img = deepcopy(anim_frame)
     scaled_ent_box = scale_box(ent_rects)

@@ -112,7 +112,7 @@ def filter_keep_by_area_fraction(boxes, keeps, thresh):
                 break
 
 
-def nms(charBoxes, thresh):
+def prep_boxes(charBoxes):
     boxes = [None] * len(charBoxes)
     for i, charBox in enumerate(charBoxes):
         box = characterbox_to_box(charBox)
@@ -124,14 +124,31 @@ def nms(charBoxes, thresh):
             'label': label,
             'idx': i,
         }
-
     boxes = sorted(boxes, key=lambda x: x['area'], reverse=True)  # largest area first
+    return boxes
+
+
+def prep_boxes_v2(rboxes):
+    boxes = [None] * len(rboxes)
+    for i, rbox in enumerate(rboxes):
+        box = np.array(rbox)
+        area = box_area(box.reshape(2, 2))
+        label = 'entity'
+        boxes[i] = {
+            'box': box,
+            'area': area,
+            'label': label,
+            'idx': i,
+        }
+    boxes = sorted(boxes, key=lambda x: x['area'], reverse=True)  # largest area first
+    return boxes
+
+
+def nms(charBoxes, thresh, box_prepper=prep_boxes):
+    boxes = box_prepper(charBoxes)
     keep = [None] * len(boxes)
     for i, box in enumerate(boxes):
         keep[i] = not is_duplicate(i, boxes, thresh)
-    # print(keep)
-    filter_keep_by_area_fraction(boxes, keep, thresh)
-    # print(keep)
     selected_boxes = [boxes[i] for i in range(len(boxes)) if keep[i]]
     duplicate_boxes = [boxes[i] for i in range(len(boxes)) if not keep[i]]
     assign_boxes(selected_boxes, duplicate_boxes)

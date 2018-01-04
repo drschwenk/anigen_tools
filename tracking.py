@@ -169,11 +169,12 @@ def draw_all_bboxes(frame_arr_square, raw_bboxes, entity_type = 'character'):
 
 
 def draw_video_tracking(video, retrieved=True):
+    tracking_dir = 'tracking_stabilized'
     if retrieved:
         t_dir = './retrieved/' + trajectories_dir
     else:
         t_dir = trajectories_dir
-    outfile = os.path.join(t_dir, viz_dir, video.gid() + '_tracking.gif')
+    outfile = os.path.join('viz', video.gid() + '_tracking.gif')
     all_eids = [ent.gid() for ent in video.data()['characters'] + video.data()['objects'] if ent.data()['entityLabel'] != 'None']
     entity_interps = [np.load(os.path.join(t_dir,  tracking_dir, eid + '.npy')) for eid in all_eids]
     frame_arr_data = np.load(os.path.join(t_dir,  frame_arr_dir, video.gid() + '.npy'))
