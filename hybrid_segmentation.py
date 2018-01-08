@@ -18,7 +18,7 @@ segmentation_dir = 'improved_segmentation'
 viz_dir = 'viz'
 
 
-n_super_pixels = 1000
+n_super_pixels = 100
 
 n_grabcut_iter = 1
 
@@ -142,7 +142,7 @@ def segment_video(video):
                     fgm = np.zeros((1, 65), np.float64)
                     scaled_ent_box = scale_box(entity_rects[frame_n])
                     # scaled_other = [scale_box(oer[frame_n]) for oer in other_rects]
-                    segm, bgm, fgm, mask = segment_entity(frame_arr_data[frame_n], scaled_ent_box, bgm, fgm, other_rects)
+                    segm, bgm, fgm = segment_entity(frame_arr_data[frame_n], scaled_ent_box, bgm, fgm, other_rects)
                     char_mask.append(segm)
             except FileNotFoundError:
                 char_mask = np.zeros(frame_arr_data.shape[:3], np.uint8)
@@ -254,6 +254,7 @@ def segment_entity(frame, ent_rect, bgm, fgm, other_bbox):
     def_fg = def_fg.astype(np.uint8)
     img_regions = partition_image(lab, n_super_pixels)
     rough_ent = rough_segment(img_regions, ent_bbox_mask, region_merge_thresh)
+    # rough_ent = ent_bbox_mask
     # return rough_ent
     ent_segmentation, bgm, fgm = grabcut_from_rough_mask(rough_ent, lab, inv_bg_mask, def_fg, bgm, fgm)
     closing_kernel = np.ones((2, 2), np.uint8)
@@ -306,6 +307,5 @@ def draw_video_segmentations(video, frame_arr_data=np.array([]), retrieved=False
                                        range(segm_arr.shape[0])]
                 segmentation_frames[0].save(outfile, save_all=True, optimize=False, duration=42,
                                             append_images=segmentation_frames[1:])
-                return segmentation_frames
             except FileNotFoundError:
                 pass
