@@ -1,19 +1,16 @@
 trajectories_dir = 'trajectories'
-tracking_dir = 'tracking'
+tracking_dir = 'tracking_stabilized'
 interp_dir = 'interpolation'
 frame_arr_dir = 'frame_arr_data'
-segmentation_dir = 'segmentation'
+segmentation_dir = 'improved_segmentation'
 viz_dir = 'viz'
 
 
-n_super_pixels = 1000
+n_super_pixels = 800
 
-n_grabcut_iter = 1
-
-n_partitions = 500
+n_grabcut_iter = 0
 
 region_merge_thresh = 0.5
-
 
 # slic paramas
 sigma = 1
