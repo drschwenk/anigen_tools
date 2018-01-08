@@ -4,6 +4,7 @@ import cv2
 import os
 from copy import deepcopy
 from skimage.segmentation import slic
+from .bboxes import limit_rect
 # from skimage.segmentation import mark_boundaries
 # from skimage import data, io, segmentation, color
 from skimage.future import graph
@@ -22,7 +23,7 @@ n_super_pixels = 100
 
 n_grabcut_iter = 1
 
-region_merge_thresh = 0.2
+region_merge_thresh = 0.5
 
 # slic paramas
 sigma = 1
@@ -52,7 +53,7 @@ scale_down = new_dim / owidth
 asp_ratio = owidth / oheight
 
 kernel = np.ones((5, 5), np.uint8)
-closing_kernel = np.ones((10, 10), np.uint8)
+closing_kernel = np.ones((2, 2), np.uint8)
 
 
 def mask_out_bg(img, entities, fn=0):
@@ -63,17 +64,6 @@ def mask_out_bg(img, entities, fn=0):
         x, y, x2, y2 = rect
         mask[y:y2, x:x2] = 1
     return mask
-
-
-# def segment_entity(img, rect, bg_mask):
-#     mask = bg_mask
-#     img = np.array(img)[:, :, ::]
-#     bgd_model = np.zeros((1, 65), np.float64)
-#     fgd_model = np.zeros((1, 65), np.float64)
-#     mask, bgd_model, fgd_model = cv2.grabCut(img, mask, None, bgd_model, fgd_model, 5, cv2.GC_INIT_WITH_MASK)
-#     mask = np.where((mask == 2) | (mask == 0), 0, 1).astype('uint8')
-#     img = img * mask[:, :, np.newaxis]
-#     return img
 
 
 def segment_entity_rect(img, rect):
@@ -100,35 +90,12 @@ def scale_box(bbox):
     return bb.reshape(4,)
 
 
-def segment_all_video_entities(video, retrieved=False):
-    if retrieved:
-        t_dir = './retrieved/' + trajectories_dir
-    else:
-        t_dir = trajectories_dir
-    seg_path = os.path.join(t_dir, segmentation_dir)
-    frame_arr_data = np.load(os.path.join(t_dir,  frame_arr_dir, video.gid() + '.npy'))
-    for ent in video.data()['characters'] + video.data()['objects']:
-        char_mask = []
-        outfile = os.path.join(seg_path, ent.gid() + '_segm.npy')
-        try:
-            for frame_n in range(frame_arr_data.shape[0]):
-                entity_rects = np.load(os.path.join(t_dir, tracking_dir, ent.gid() + '.npy'))
-                scaled_ent_box = scale_box(entity_rects[frame_n])
-                char_mask.append(segment_entity_rect(frame_arr_data[frame_n], scaled_ent_box))
-        except:
-            char_mask = np.zeros(frame_arr_data.shape[:3], np.uint8)
-        try:
-            np.savez_compressed(outfile, np.array(char_mask))
-        except FileNotFoundError as e:
-            print(e)
-
-
 def segment_video(video):
     t_dir = trajectories_dir
     seg_path = os.path.join(t_dir, segmentation_dir)
     frame_arr_data = np.load(os.path.join(t_dir, frame_arr_dir, video.gid() + '.npy'))
     try:
-        for ent in video.data()['characters']: # + video.data()['objects']:
+        for ent in video.data()['characters'] + video.data()['objects']:
             char_mask = []
             outfile = os.path.join(seg_path, ent.gid() + '_segm.npy')
             entity_rects = np.load(os.path.join(t_dir, tracking_dir, ent.gid() + '.npy'))
@@ -147,7 +114,22 @@ def segment_video(video):
             except FileNotFoundError:
                 char_mask = np.zeros(frame_arr_data.shape[:3], np.uint8)
             try:
-                np.savez_compressed(outfile, np.array(char_mask))
+                char_mask = np.array(char_mask)
+                ent_area = char_mask.sum(apis=1).sum(axis=1)
+                low_area_thresh = np.percentile(ent_area, 50)
+                high_area_thresh = np.percentile(ent_area, 90)
+                good_frames = (high_area_thresh >= ent_area) & (ent_area >= low_area_thresh)
+                first_good_frame = good_frames.argmax()
+                patched_ent_masks = np.zeros_like(char_mask)
+                for fn in range(char_mask.shape[0]):
+                    if not good_frames[fn]:
+                        if fn > first_good_frame:
+                            patched_ent_masks[fn] = patched_ent_masks[fn - 1]
+                        else:
+                            patched_ent_masks[fn] = char_mask[first_good_frame]
+                    else:
+                        patched_ent_masks[fn] = char_mask[fn]
+                np.savez_compressed(outfile, np.array(patched_ent_masks))
             except FileNotFoundError as e:
                 print(e)
     except FileExistsError:
@@ -225,14 +207,9 @@ def rough_segment(regions, bbox_mask, inclusion_thresh):
 
 
 def grabcut_from_rough_mask(ent_mask, img, bg_mask, fg_mask, bgdModel, fgdModel):
-    import pdb
     mask = np.where(ent_mask == 1, cv2.GC_PR_FGD, cv2.GC_PR_BGD).astype('uint8')
-    # print(pd.value_counts(pd.Series(mask.ravel())))
     mask *= bg_mask     # sets certain bg outside enlarged bounding box
     mask = mask - fg_mask * 2
-    # print(pd.value_counts(pd.Series(mask.ravel())))
-    # bgdModel = np.zeros((1, 65), np.float64)
-    # fgdModel = np.zeros((1, 65), np.float64)
     cv2.grabCut(img, mask, None, bgdModel, fgdModel, n_grabcut_iter, cv2.GC_INIT_WITH_MASK)
     ref_mask = np.where((mask == 3) | (mask == 1), 1, 0).astype('uint8')
 
@@ -245,7 +222,10 @@ def grabcut_from_rough_mask(ent_mask, img, bg_mask, fg_mask, bgdModel, fgdModel)
 def segment_entity(frame, ent_rect, bgm, fgm, other_bbox):
     img = deepcopy(frame)
     lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
+    ent_rect = limit_rect(np.array(ent_rect).reshape(2, 2), new_dim, new_dim, 0).reshape(4)
+    # print(ent_rect)
     ent_bbox_mask = create_bbox_segment(ent_rect)
+    # print(ent_bbox_mask.sum())
     inv_bg_mask = cv2.dilate(ent_bbox_mask, kernel, iterations=2)
     img_within_bbox = img * np.tile(np.expand_dims(ent_bbox_mask, 2), [1, 1, 3])
     gray = cv2.cvtColor(img_within_bbox, cv2.COLOR_RGB2GRAY)
@@ -254,10 +234,7 @@ def segment_entity(frame, ent_rect, bgm, fgm, other_bbox):
     def_fg = def_fg.astype(np.uint8)
     img_regions = partition_image(lab, n_super_pixels)
     rough_ent = rough_segment(img_regions, ent_bbox_mask, region_merge_thresh)
-    # rough_ent = ent_bbox_mask
-    # return rough_ent
     ent_segmentation, bgm, fgm = grabcut_from_rough_mask(rough_ent, lab, inv_bg_mask, def_fg, bgm, fgm)
-    closing_kernel = np.ones((2, 2), np.uint8)
     ent_segmentation = cv2.morphologyEx(ent_segmentation, cv2.MORPH_OPEN, closing_kernel)
     return ent_segmentation, bgm, fgm
 

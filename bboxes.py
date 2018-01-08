@@ -181,6 +181,7 @@ def limit_rect(rect, max_x, max_y, border_pad=2):
         rect[1][0] = max_x - border_pad
     if rect[1][1] > max_y:
         rect[1][1] = max_y - border_pad
+    return rect
 
 
 def draw_clusters(img_path, clustered_boxes, direction='rows', image=np.array([]), color=(0, 255, 255)):
