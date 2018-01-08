@@ -239,7 +239,7 @@ def grabcut_from_rough_mask(ent_mask, img, bg_mask, fg_mask, bgdModel, fgdModel)
     # ref_mask = ref_mask * ent_mask
     # if np.array(combined_other_mask).any():
     #     ref_mask = ref_mask * (combined_other_mask == 0)
-    return ref_mask, bgdModel, fgdModel, ref_mask
+    return ref_mask, bgdModel, fgdModel
 
 
 def segment_entity(frame, ent_rect, bgm, fgm, other_bbox):
@@ -255,9 +255,10 @@ def segment_entity(frame, ent_rect, bgm, fgm, other_bbox):
     img_regions = partition_image(lab, n_super_pixels)
     rough_ent = rough_segment(img_regions, ent_bbox_mask, region_merge_thresh)
     # return rough_ent
-    ent_segmentation, bgm, fgm, mask = grabcut_from_rough_mask(rough_ent, lab, inv_bg_mask, def_fg, bgm, fgm)
-    ent_segmentation = cv2.morphologyEx(ent_segmentation, cv2.MORPH_CLOSE, closing_kernel)
-    return ent_segmentation, bgm, fgm, mask
+    ent_segmentation, bgm, fgm = grabcut_from_rough_mask(rough_ent, lab, inv_bg_mask, def_fg, bgm, fgm)
+    closing_kernel = np.ones((2, 2), np.uint8)
+    ent_segmentation = cv2.morphologyEx(ent_segmentation, cv2.MORPH_OPEN, closing_kernel)
+    return ent_segmentation, bgm, fgm
 
 
 def get_vid_frame_data(vid_gid):
@@ -276,12 +277,12 @@ def gen_single_segmentation(video, ent, frame_n=30):
     scaled_ent_box = scale_box(ent_rects)
     bgdModel = np.zeros((1, 65), np.float64)
     fgdModel = np.zeros((1, 65), np.float64)
-    ent_segmentation, _, _, mask = segment_entity(anim_frame, scaled_ent_box, bgdModel, fgdModel, None)
+    ent_segmentation, _, _ = segment_entity(anim_frame, scaled_ent_box, bgdModel, fgdModel, None)
     # return ent_segmentation
-    ent_segmentation = np.tile(np.expand_dims(ent_segmentation, 2), [1, 1, 3])
-    inv_mask = np.logical_not(ent_segmentation).astype(np.uint8)
-    cutout_ent = anim_frame * ent_segmentation + inv_mask * 90
-    return pil.fromarray(cutout_ent), mask
+    rgb_ent_segmentation = np.tile(np.expand_dims(ent_segmentation, 2), [1, 1, 3])
+    inv_mask = np.logical_not(rgb_ent_segmentation).astype(np.uint8)
+    cutout_ent = anim_frame * rgb_ent_segmentation + inv_mask * 90
+    return pil.fromarray(cutout_ent), ent_segmentation
 
 
 def draw_video_segmentations(video, frame_arr_data=np.array([]), retrieved=False):
