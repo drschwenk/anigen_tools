@@ -5,8 +5,6 @@ import os
 from copy import deepcopy
 from skimage.segmentation import slic
 from .bboxes import limit_rect
-# from skimage.segmentation import mark_boundaries
-# from skimage import data, io, segmentation, color
 from skimage.future import graph
 import pandas as pd
 import PIL.Image as pil
@@ -18,11 +16,8 @@ frame_arr_dir = 'frame_arr_data'
 segmentation_dir = 'improved_segmentation'
 viz_dir = 'viz'
 
-
 n_super_pixels = 100
-
 n_grabcut_iter = 1
-
 region_merge_thresh = 0.5
 
 # slic paramas
@@ -99,25 +94,23 @@ def segment_video(video):
             char_mask = []
             outfile = os.path.join(seg_path, ent.gid() + '_segm.npy')
             entity_rects = np.load(os.path.join(t_dir, tracking_dir, ent.gid() + '.npy'))
-            other_ents = [oe for oe in video.data()['characters'] + video.data()['objects'] if oe.gid() != ent.gid()]
-            other_rects = [np.load(os.path.join(t_dir, tracking_dir, oe.gid() + '.npy')) for oe in other_ents]
+            # other_ents = [oe for oe in video.data()['characters'] + video.data()['objects'] if oe.gid() != ent.gid()]
+            # other_rects = [np.load(os.path.join(t_dir, tracking_dir, oe.gid() + '.npy')) for oe in other_ents]
             try:
-                # bgm = np.zeros((1, 65), np.float64)
-                # fgm = np.zeros((1, 65), np.float64)
                 for frame_n in range(frame_arr_data.shape[0]):
-                    bgm = np.zeros((1, 65), np.float64)
-                    fgm = np.zeros((1, 65), np.float64)
                     scaled_ent_box = scale_box(entity_rects[frame_n])
-                    # scaled_other = [scale_box(oer[frame_n]) for oer in other_rects]
-                    segm, bgm, fgm = segment_entity(frame_arr_data[frame_n], scaled_ent_box, bgm, fgm, other_rects)
+                    segm = segment_entity(frame_arr_data[frame_n], scaled_ent_box)
                     char_mask.append(segm)
             except FileNotFoundError:
                 char_mask = np.zeros(frame_arr_data.shape[:3], np.uint8)
             try:
                 char_mask = np.array(char_mask)
-                ent_area = char_mask.sum(apis=1).sum(axis=1)
-                low_area_thresh = np.percentile(ent_area, 50)
-                high_area_thresh = np.percentile(ent_area, 90)
+                ent_area = char_mask.sum(axis=1).sum(axis=1)
+                # low_area_thresh = np.percentile(ent_area, 30)
+                # high_area_thresh = np.percentile(ent_area, 90)
+                med_area = np.median(ent_area)
+                low_area_thresh = med_area * 0.8
+                high_area_thresh = med_area * 10.1
                 good_frames = (high_area_thresh >= ent_area) & (ent_area >= low_area_thresh)
                 first_good_frame = good_frames.argmax()
                 patched_ent_masks = np.zeros_like(char_mask)
@@ -133,7 +126,7 @@ def segment_video(video):
             except FileNotFoundError as e:
                 print(e)
     except FileExistsError:
-        print(ent.gid())
+        print(video.gid())
 
 
 def draw_segmentation(segmentation_arr):
@@ -173,7 +166,6 @@ def compute_iou(segment1, segment2, area1=0, area2=0):
 
 def create_bbox_segment(rect, frame_size=(128, 128)):
     segment = np.zeros(frame_size, dtype=np.uint8)
-    # rect = scale_box(np.array(ent.rect())[1])
     segment[rect[0]: rect[2], rect[1]: rect[3]] = 1
     return segment.T
 
@@ -202,41 +194,37 @@ def rough_segment(regions, bbox_mask, inclusion_thresh):
     overlapping_regions = pd.Series(ent_reg_overlaps).sort_values(ascending=False)
     regions_to_include = overlapping_regions.index[overlapping_regions > inclusion_thresh]
     ent_segment = np.isin(regions, regions_to_include).astype(np.uint8)
-    #     masked_ent = frame * np.tile(np.expand_dims(ent_segment, 2), [1, 1, 3])
     return ent_segment
 
 
-def grabcut_from_rough_mask(ent_mask, img, bg_mask, fg_mask, bgdModel, fgdModel):
+def grabcut_from_rough_mask(ent_mask, img, bg_mask, fg_mask):
     mask = np.where(ent_mask == 1, cv2.GC_PR_FGD, cv2.GC_PR_BGD).astype('uint8')
     mask *= bg_mask     # sets certain bg outside enlarged bounding box
     mask = mask - fg_mask * 2
-    cv2.grabCut(img, mask, None, bgdModel, fgdModel, n_grabcut_iter, cv2.GC_INIT_WITH_MASK)
+    bgm = np.zeros((1, 65), np.float64)
+    fgm = np.zeros((1, 65), np.float64)
+    cv2.grabCut(img, mask, None, bgm, fgm, n_grabcut_iter, cv2.GC_INIT_WITH_MASK)
     ref_mask = np.where((mask == 3) | (mask == 1), 1, 0).astype('uint8')
-
-    # ref_mask = ref_mask * ent_mask
-    # if np.array(combined_other_mask).any():
-    #     ref_mask = ref_mask * (combined_other_mask == 0)
-    return ref_mask, bgdModel, fgdModel
+    return ref_mask
 
 
-def segment_entity(frame, ent_rect, bgm, fgm, other_bbox):
+def segment_entity(frame, ent_rect):
     img = deepcopy(frame)
     lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
     ent_rect = limit_rect(np.array(ent_rect).reshape(2, 2), new_dim, new_dim, 0).reshape(4)
-    # print(ent_rect)
     ent_bbox_mask = create_bbox_segment(ent_rect)
-    # print(ent_bbox_mask.sum())
     inv_bg_mask = cv2.dilate(ent_bbox_mask, kernel, iterations=2)
     img_within_bbox = img * np.tile(np.expand_dims(ent_bbox_mask, 2), [1, 1, 3])
     gray = cv2.cvtColor(img_within_bbox, cv2.COLOR_RGB2GRAY)
     def_fg = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 115, 1)
-    def_fg = (def_fg == 0) * ent_bbox_mask
-    def_fg = def_fg.astype(np.uint8)
+    def_fg = ((def_fg == 0) * ent_bbox_mask).astype(np.uint8)
     img_regions = partition_image(lab, n_super_pixels)
     rough_ent = rough_segment(img_regions, ent_bbox_mask, region_merge_thresh)
-    ent_segmentation, bgm, fgm = grabcut_from_rough_mask(rough_ent, lab, inv_bg_mask, def_fg, bgm, fgm)
+    if not rough_ent.sum():
+        rough_ent = ent_bbox_mask
+    ent_segmentation = grabcut_from_rough_mask(rough_ent, lab, inv_bg_mask, def_fg)
     ent_segmentation = cv2.morphologyEx(ent_segmentation, cv2.MORPH_OPEN, closing_kernel)
-    return ent_segmentation, bgm, fgm
+    return ent_segmentation
 
 
 def get_vid_frame_data(vid_gid):
@@ -253,10 +241,7 @@ def gen_single_segmentation(video, ent, frame_n=30):
     ent_rects = get_ent_tracking(ent)
     ent_rects = ent_rects[frame_n]
     scaled_ent_box = scale_box(ent_rects)
-    bgdModel = np.zeros((1, 65), np.float64)
-    fgdModel = np.zeros((1, 65), np.float64)
-    ent_segmentation, _, _ = segment_entity(anim_frame, scaled_ent_box, bgdModel, fgdModel, None)
-    # return ent_segmentation
+    ent_segmentation = segment_entity(anim_frame, scaled_ent_box)
     rgb_ent_segmentation = np.tile(np.expand_dims(ent_segmentation, 2), [1, 1, 3])
     inv_mask = np.logical_not(rgb_ent_segmentation).astype(np.uint8)
     cutout_ent = anim_frame * rgb_ent_segmentation + inv_mask * 90
