@@ -8,6 +8,7 @@ from .bboxes import limit_rect
 from skimage.future import graph
 import pandas as pd
 import PIL.Image as pil
+import cv2.error
 
 trajectories_dir = 'trajectories'
 tracking_dir = 'tracking_stabilized'
@@ -229,7 +230,10 @@ def segment_entity(frame, ent_rect, grabcut_failure_thresh = 0.35):
     rough_ent = rough_segment(img_regions, ent_bbox_mask, region_merge_thresh)
     if not rough_ent.sum():
         rough_ent = ent_bbox_mask
-    ent_segmentation = grabcut_from_rough_mask(rough_ent, lab, inv_bg_mask, def_fg)
+    try:
+        ent_segmentation = grabcut_from_rough_mask(rough_ent, lab, inv_bg_mask, def_fg)
+    except cv2.error:
+        ent_segmentation = rough_ent
     if compute_iou(ent_segmentation, ent_bbox_mask)[0] < grabcut_failure_thresh:
         ent_segmentation = rough_ent
         ent_segmentation = cv2.morphologyEx(ent_segmentation, cv2.MORPH_OPEN, kernel)
@@ -264,7 +268,6 @@ def draw_video_segmentations(video, frame_arr_data=np.array([]), retrieved=False
         t_dir = './retrieved/' + trajectories_dir
     else:
         t_dir = trajectories_dir
-    # try:
     seg_path = os.path.join(t_dir, viz_dir)
     if not frame_arr_data.any():
         frame_arr_data = np.load(os.path.join(t_dir,  frame_arr_dir, video.gid() + '.npy'))
