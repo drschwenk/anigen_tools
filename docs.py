@@ -41,8 +41,8 @@ video_mkd_template = """## Video ID {}
 """
 
 s3_doc_base_uri = 'https://s3-us-west-2.amazonaws.com/ai2-vision-animation-gan/documentation/images/'
+s3_doc_base_uri_update = 'https://s3-us-west-2.amazonaws.com/ai2-vision-animation-gan/documentation/images_v3/'
 local_path = '/Users/schwenk/wrk/animation_gan/ai2-vision-animation-gan/documentation/images/'
-img_base_path = 'https://s3-us-west-2.amazonaws.com/ai2-vision-animation-gan/documentation/images/'
 
 
 def paginate_docs(videos, page_size=50):
@@ -93,16 +93,16 @@ def draw_parse_trees(video):
 def gen_video_mkd(video):
     segm_gif_str = ''
     for ent in video.data()['characters'] + video.data()['objects']:
-        link = s3_doc_base_uri + ent.gid().replace(' ', '_') + '_segm.gif'
+        link = s3_doc_base_uri_update + ent.gid().replace(' ', '_') + '_segm.gif'
         segm_gif_str += '![segmentation]({})\n\n'.format(link)
     entry_args = [
         video.gid(),
         s3_doc_base_uri + video.gid() + '_keyframes.png',
         s3_doc_base_uri + video.gid() + '_bboxes.png',
-        s3_doc_base_uri + video.gid() + '_bgfill.png',
+        s3_doc_base_uri_update + video.gid() + '_bgfill.png',
         video.display_gif(True),
         s3_doc_base_uri + video.gid() + '_interp.gif',
-        s3_doc_base_uri + video.gid() + '_tracking.gif',
+        s3_doc_base_uri_update + video.gid() + '_tracking.gif',
         segm_gif_str,
 
         video.description(),
@@ -113,7 +113,7 @@ def gen_video_mkd(video):
         #     '![con_parse]({})'.format(s3_doc_base_uri + video.gid() + '_sent_' + str(sent_idx) + '_parse_tree.png') for
         #     sent_idx in range(len(video.data()['parse']['constituent_parse']))),
         '\t' + '\n\n\t'.join(video.data()['parse']['noun_phrase_chunks']['named_chunks']),
-        '\t' + '\n\n\t'.join([' : '.join(cluster) for cluster in video.data()['parse']['coref']['named_clusters']])
+        '\t' + '\n\n\t'.join([' : '.join(cluster) for cluster in video.data()['parse']['coref']])
     ]
 
     return video_mkd_template.format(*entry_args)

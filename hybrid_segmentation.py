@@ -16,7 +16,7 @@ frame_arr_dir = 'frame_arr_data'
 segmentation_dir = 'improved_segmentation'
 viz_dir = 'viz'
 
-n_super_pixels = 100
+n_super_pixels = 800
 n_grabcut_iter = 1
 region_merge_thresh = 0.5
 
@@ -94,8 +94,6 @@ def segment_video(video):
             char_mask = []
             outfile = os.path.join(seg_path, ent.gid() + '_segm.npy')
             entity_rects = np.load(os.path.join(t_dir, tracking_dir, ent.gid() + '.npy'))
-            # other_ents = [oe for oe in video.data()['characters'] + video.data()['objects'] if oe.gid() != ent.gid()]
-            # other_rects = [np.load(os.path.join(t_dir, tracking_dir, oe.gid() + '.npy')) for oe in other_ents]
             try:
                 for frame_n in range(frame_arr_data.shape[0]):
                     scaled_ent_box = scale_box(entity_rects[frame_n])
@@ -104,29 +102,38 @@ def segment_video(video):
             except FileNotFoundError:
                 char_mask = np.zeros(frame_arr_data.shape[:3], np.uint8)
             try:
-                char_mask = np.array(char_mask)
-                ent_area = char_mask.sum(axis=1).sum(axis=1)
-                # low_area_thresh = np.percentile(ent_area, 30)
-                # high_area_thresh = np.percentile(ent_area, 90)
-                med_area = np.median(ent_area)
-                low_area_thresh = med_area * 0.8
-                high_area_thresh = med_area * 10.1
-                good_frames = (high_area_thresh >= ent_area) & (ent_area >= low_area_thresh)
-                first_good_frame = good_frames.argmax()
-                patched_ent_masks = np.zeros_like(char_mask)
-                for fn in range(char_mask.shape[0]):
-                    if not good_frames[fn]:
-                        if fn > first_good_frame:
-                            patched_ent_masks[fn] = patched_ent_masks[fn - 1]
-                        else:
-                            patched_ent_masks[fn] = char_mask[first_good_frame]
-                    else:
-                        patched_ent_masks[fn] = char_mask[fn]
-                np.savez_compressed(outfile, np.array(patched_ent_masks))
+                stabilized_masks = stabilize_segmentations(char_mask)
+                np.savez_compressed(outfile, np.array(stabilized_masks))
             except FileNotFoundError as e:
                 print(e)
     except FileExistsError:
         print(video.gid())
+
+
+def stabilize_segmentations(char_mask):
+    char_mask = np.array(char_mask)
+    ent_area = char_mask.sum(axis=1).sum(axis=1).astype(np.float64)
+    # low_area_thresh = np.percentile(ent_area, 30)
+    # high_area_thresh = np.percentile(ent_area, 90)
+    med_area = np.median(ent_area)
+    low_area_thresh = med_area * 0.8
+    high_area_thresh = med_area * 1.1
+    good_frames = (high_area_thresh >= ent_area) & (ent_area >= low_area_thresh)
+    first_good_frame = good_frames.argmax()
+    patched_ent_masks = np.zeros_like(char_mask)
+    for fn in range(0, char_mask.shape[0]):
+        if not good_frames[fn]:
+            if fn > first_good_frame:
+                patched_ent_masks[fn] = patched_ent_masks[fn - 1]
+            else:
+                patched_ent_masks[fn] = char_mask[first_good_frame]
+        else:
+            if abs(ent_area[fn] - ent_area[fn - 1]) / ent_area[fn] > 0.03:
+                print('patch')
+                patched_ent_masks[fn] = char_mask[fn - 1]
+            else:
+                patched_ent_masks[fn] = char_mask[fn]
+    return patched_ent_masks
 
 
 def draw_segmentation(segmentation_arr):
@@ -208,7 +215,7 @@ def grabcut_from_rough_mask(ent_mask, img, bg_mask, fg_mask):
     return ref_mask
 
 
-def segment_entity(frame, ent_rect):
+def segment_entity(frame, ent_rect, grabcut_failure_thresh = 0.35):
     img = deepcopy(frame)
     lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
     ent_rect = limit_rect(np.array(ent_rect).reshape(2, 2), new_dim, new_dim, 0).reshape(4)
@@ -223,7 +230,11 @@ def segment_entity(frame, ent_rect):
     if not rough_ent.sum():
         rough_ent = ent_bbox_mask
     ent_segmentation = grabcut_from_rough_mask(rough_ent, lab, inv_bg_mask, def_fg)
-    ent_segmentation = cv2.morphologyEx(ent_segmentation, cv2.MORPH_OPEN, closing_kernel)
+    if compute_iou(ent_segmentation, ent_bbox_mask)[0] < grabcut_failure_thresh:
+        ent_segmentation = rough_ent
+        ent_segmentation = cv2.morphologyEx(ent_segmentation, cv2.MORPH_OPEN, kernel)
+    else:
+        ent_segmentation = cv2.morphologyEx(ent_segmentation, cv2.MORPH_OPEN, closing_kernel)
     return ent_segmentation
 
 
