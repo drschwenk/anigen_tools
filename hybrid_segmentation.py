@@ -103,6 +103,7 @@ def segment_video(video):
                 char_mask = np.zeros(frame_arr_data.shape[:3], np.uint8)
             try:
                 stabilized_masks = stabilize_segmentations(char_mask)
+                # stabilized_masks = char_mask
                 np.savez_compressed(outfile, np.array(stabilized_masks))
             except FileNotFoundError as e:
                 print(e)
@@ -128,9 +129,8 @@ def stabilize_segmentations(char_mask):
             else:
                 patched_ent_masks[fn] = char_mask[first_good_frame]
         else:
-            if abs(ent_area[fn] - ent_area[fn - 1]) / ent_area[fn] > 0.03:
-                print('patch')
-                patched_ent_masks[fn] = char_mask[fn - 1]
+            if abs(ent_area[fn] - ent_area[fn - 1]) / ent_area[fn] > 0.03 and fn > 0:
+                patched_ent_masks[fn] = patched_ent_masks[fn - 1]
             else:
                 patched_ent_masks[fn] = char_mask[fn]
     return patched_ent_masks
