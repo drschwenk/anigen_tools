@@ -8,7 +8,6 @@ from .bboxes import limit_rect
 from skimage.future import graph
 import pandas as pd
 import PIL.Image as pil
-import cv2.error
 
 trajectories_dir = 'trajectories'
 tracking_dir = 'tracking_stabilized'
@@ -98,7 +97,7 @@ def segment_video(video):
             try:
                 for frame_n in range(frame_arr_data.shape[0]):
                     scaled_ent_box = scale_box(entity_rects[frame_n])
-                    segm = segment_entity(frame_arr_data[frame_n], scaled_ent_box)
+                    segm = segment_entity(frame_arr_data[frame_n], scaled_ent_box, ent_id=ent.gid())
                     char_mask.append(segm)
             except FileNotFoundError:
                 char_mask = np.zeros(frame_arr_data.shape[:3], np.uint8)
@@ -130,7 +129,7 @@ def stabilize_segmentations(char_mask):
             else:
                 patched_ent_masks[fn] = char_mask[first_good_frame]
         else:
-            if abs(ent_area[fn] - ent_area[fn - 1]) / ent_area[fn] > 0.03 and fn > 0:
+            if ent_area[fn] and abs(ent_area[fn] - ent_area[fn - 1]) / ent_area[fn] > 0.03 and fn > 0:
                 patched_ent_masks[fn] = patched_ent_masks[fn - 1]
             else:
                 patched_ent_masks[fn] = char_mask[fn]
@@ -216,7 +215,7 @@ def grabcut_from_rough_mask(ent_mask, img, bg_mask, fg_mask):
     return ref_mask
 
 
-def segment_entity(frame, ent_rect, grabcut_failure_thresh = 0.35):
+def segment_entity(frame, ent_rect, grabcut_failure_thresh=0.35, ent_id=''):
     img = deepcopy(frame)
     lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
     ent_rect = limit_rect(np.array(ent_rect).reshape(2, 2), new_dim, new_dim, 0).reshape(4)
@@ -233,6 +232,7 @@ def segment_entity(frame, ent_rect, grabcut_failure_thresh = 0.35):
     try:
         ent_segmentation = grabcut_from_rough_mask(rough_ent, lab, inv_bg_mask, def_fg)
     except cv2.error:
+        print(ent_id)
         ent_segmentation = rough_ent
     if compute_iou(ent_segmentation, ent_bbox_mask)[0] < grabcut_failure_thresh:
         ent_segmentation = rough_ent
@@ -246,8 +246,8 @@ def get_vid_frame_data(vid_gid):
     return np.load(os.path.join(trajectories_dir, frame_arr_dir, vid_gid + '.npy'))
 
 
-def get_ent_tracking(ent):
-    return np.load('./trajectories/tracking/' + ent.gid() + '.npy')
+def get_ent_tracking(ent, track_dir='tracking/'):
+    return np.load('./trajectories/' + track_dir + ent.gid() + '.npy')
 
 
 def gen_single_segmentation(video, ent, frame_n=30):
@@ -268,6 +268,7 @@ def draw_video_segmentations(video, frame_arr_data=np.array([]), retrieved=False
         t_dir = './retrieved/' + trajectories_dir
     else:
         t_dir = trajectories_dir
+    # try:
     seg_path = os.path.join(t_dir, viz_dir)
     if not frame_arr_data.any():
         frame_arr_data = np.load(os.path.join(t_dir,  frame_arr_dir, video.gid() + '.npy'))

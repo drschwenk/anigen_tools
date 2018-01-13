@@ -10,6 +10,7 @@ from collections import defaultdict
 
 
 def box_area(box):
+    # box = box.reshape(2, 2)
     height = box[1][1] - box[0][1]
     width = box[1][0] - box[0][0]
     return height * width
@@ -40,7 +41,7 @@ def comp_boxes_iou(b1, b2):
     b1_area = box_area(b1)
     b2_area = box_area(b2)
     intersection = compute_intersection(b1, b2)
-    iou = intersection / (b1_area + b2_area - intersection)
+    iou = intersection / (b1_area + b2_area - intersection + 0.01)
     return iou
 
 
