@@ -60,6 +60,9 @@ class FlintstonesDataset(object):
         }
         return summary
 
+    def remove_vids(self, vids_to_remove):
+        self.data = [vid for vid in self.data if vid.gid() not in vids_to_remove]
+
     def count_stages(self):
         vid_stages = pd.Series([vid.stage_status() for vid in self.data])
         stage_counts = vid_stages.value_counts().to_dict()
@@ -205,7 +208,7 @@ class FlintstonesDataset(object):
         complete_vids = self.filter_videos(
             {'stage': 'stage_4b- objects', 'go': True}) + self.filter_videos(
             {'stage': 'stage_4b- no objects', 'go': True}) # + self.filter_videos({'stage': 'stage_4a', 'go': True})
-
+        # complete_vids = self.data
         for video_anno_obj in complete_vids:
             video_anno = video_anno_obj.data()
             try:
@@ -537,6 +540,9 @@ class VideoAnnotation(object):
         self.set_status('stage_3b')
 
     def update_stage3b_w_corrections(self, s3b_annos_w_corrections):
+        this_stage_removal_reason = "missing stage3b annotation"
+        if self.removal_reason() and self.removal_reason() != this_stage_removal_reason:
+            return
         if self.gid() in s3b_annos_w_corrections:
             description, corrected_char_names = s3b_annos_w_corrections[self.gid()]
             self._data['description'] = description
@@ -611,7 +617,6 @@ class VideoAnnotation(object):
         self.set_status('stage_4b- objects')
 
     def body_part_assignment(self, obj):
-        print(obj)
         for characters in self.data()['characters']:
             pass
 
@@ -712,8 +717,8 @@ class VideoAnnotation(object):
         if type(start_w) == int and type(end_w) == int:
             chunk_spans.append([start_w, end_w])
         else:
-            print(np)
-            print('failed')
+            # print(np)
+            # print('failed')
             raise IndexError
         np_pieces = np.split()
         seen_chunks += list(set(np_pieces).union(set([np])))

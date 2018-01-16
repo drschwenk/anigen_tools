@@ -87,8 +87,8 @@ def assign_word_spans(noun_phrases_w_spans, doc, token_spans):
         if type(start_w) == int and type(end_w) == int:
             chunk_spans.append([start_w, end_w])
         else:
-            print(np)
-            print('failed')
+            # print(np)
+            # print('failed')
             raise IndexError
         np_pieces = np.split()
         seen_chunks += list(set(np_pieces).union(set([np])))
