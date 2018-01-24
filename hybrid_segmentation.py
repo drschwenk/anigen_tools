@@ -10,7 +10,7 @@ import pandas as pd
 import PIL.Image as pil
 
 trajectories_dir = 'trajectories'
-tracking_dir = 'tracking_stabilized'
+tracking_dir = 'tracking'
 interp_dir = 'interpolation'
 frame_arr_dir = 'frame_arr_data'
 segmentation_dir = 'improved_segmentation'
@@ -268,7 +268,6 @@ def draw_video_segmentations(video, frame_arr_data=np.array([]), retrieved=False
         t_dir = './retrieved/' + trajectories_dir
     else:
         t_dir = trajectories_dir
-    # try:
     seg_path = os.path.join(t_dir, viz_dir)
     if not frame_arr_data.any():
         frame_arr_data = np.load(os.path.join(t_dir,  frame_arr_dir, video.gid() + '.npy'))
@@ -284,5 +283,5 @@ def draw_video_segmentations(video, frame_arr_data=np.array([]), retrieved=False
                                        range(segm_arr.shape[0])]
                 segmentation_frames[0].save(outfile, save_all=True, optimize=False, duration=42,
                                             append_images=segmentation_frames[1:])
-            except FileNotFoundError:
+            except IndentationError:
                 pass

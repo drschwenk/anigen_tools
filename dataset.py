@@ -748,14 +748,14 @@ class VideoAnnotation(object):
                     # print(self.check_overlap(ent_spans, chunk_span))
                     # print(ent_spans)
                     if self.check_overlap(ent_spans, chunk_span):
-                        # if comp_chars:
-                            # try:
-                            #     object_npcs = [obj.data()['labelNPC'] for obj in self.data()['objects']]
-                            # except KeyError:
-                            #     print('fail', ent.gid())
-                            #     continue
-                            # if chunk_names[idx] in object_npcs:
-                            #     continue
+                        if comp_chars:
+                            try:
+                                object_npcs = [obj.data()['labelNPC'] for obj in self.data()['objects']]
+                            except KeyError:
+                                print('fail', ent.gid())
+                                continue
+                            if chunk_names[idx] in object_npcs:
+                                continue
                         ent._data['labelNPC'] = chunk_names[idx]
                         ent._data['entitySpan'] = list(chunk_span)
             except IndexError:

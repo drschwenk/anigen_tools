@@ -40,6 +40,16 @@ video_mkd_template = """## Video ID {}
 - - -
 """
 
+video_mkd_template_min = """## Video ID {}
+
+![animation]({})
+
+### Description
+{}
+
+- - -
+"""
+
 s3_doc_base_uri = 'https://s3-us-west-2.amazonaws.com/ai2-vision-animation-gan/documentation/images/'
 s3_doc_base_uri_update = 'https://s3-us-west-2.amazonaws.com/ai2-vision-animation-gan/documentation/images_v3/'
 local_path = '/Users/schwenk/wrk/animation_gan/ai2-vision-animation-gan/documentation/images/'
@@ -99,8 +109,8 @@ def gen_video_mkd(video):
         video.gid(),
         s3_doc_base_uri + video.gid() + '_keyframes.png',
         s3_doc_base_uri + video.gid() + '_bboxes.png',
-        s3_doc_base_uri_update + video.gid() + '_bgfill.png',
         video.display_gif(True),
+        s3_doc_base_uri_update + video.gid() + '_fill_bg.gif',
         s3_doc_base_uri + video.gid() + '_interp.gif',
         s3_doc_base_uri_update + video.gid() + '_tracking.gif',
         segm_gif_str,
@@ -110,21 +120,27 @@ def gen_video_mkd(video):
         format_characters(video.characters_present()),
         '\n\n'.join([': '.join(obj.data()['localID'].split('_', 1)) for obj in video.data()['objects']]),
         # '\n\n'.join(
-        #     '![con_parse]({})'.format(s3_doc_base_uri + video.gid() + '_sent_' + str(sent_idx) + '_parse_tree.png') for
+        #   '![con_parse]({})'.format(s3_doc_base_uri + video.gid() + '_sent_' + str(sent_idx) + '_parse_tree.png') for
         #     sent_idx in range(len(video.data()['parse']['constituent_parse']))),
         '\t' + '\n\n\t'.join(video.data()['parse']['noun_phrase_chunks']['named_chunks']),
-        '\t' + '\n\n\t'.join([' : '.join(cluster) for cluster in video.data()['parse']['coref']])
+
     ]
+    if video.data()['parse']['coref']:
+        crf_st = '\t' + '\n\n\t'.join([' : '.join(cluster) for cluster in video.data()['parse']['coref']['named_clusters']])
+    else:
+        crf_st = ''
+    entry_args.append(crf_st)
+    rendered_template = video_mkd_template.format(*entry_args)
+    # rendered_template = video_mkd_template_min.format(entry_args[0], entry_args[4], entry_args[8])
+    return rendered_template
 
-    return video_mkd_template.format(*entry_args)
 
-
-def doc_video_group(dataset, make_images=False):
+def doc_video_group(dataset, make_images=False, vids_per_page=10):
     page_filenames = {}
-    for idx, videos in enumerate(list(paginate_docs(dataset, 10))):
+    for idx, videos in enumerate(list(paginate_docs(dataset, vids_per_page))):
         idx += 1
         page_md = '\n\n\n\n'.join([gen_video_mkd(vid) for vid in videos])
-        page_name = 'video group {0:0{width}}'.format(idx, width=2)
+        page_name = 'video group {0:0{width}}'.format(idx, width=4)
         page_filenames[page_name] = page_name.replace(' ', '_') + '.md'
         if make_images:
             _ = [gen_and_save_doc_images(vid) for vid in videos]
