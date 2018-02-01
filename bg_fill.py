@@ -103,7 +103,14 @@ def write_static_bg_frame_arr(video):
 
     best_frame_idx = np.argmax(comp_arr)
     best_frame = three_frames[best_frame_idx]
-    print(frame_numbers[best_frame_idx])
     filled_out_arr = np.tile(np.expand_dims(best_frame, 0), [75, 1, 1, 1])
     outfile = os.path.join(bg_npy_dir, video.gid() + '_bg.npy.npz')
     np.savez_compressed(outfile, np.array(filled_out_arr))
+
+
+def convert_png_bgs_to_npy(vid):
+    bg_dir = os.path.join(trajectories_dir, cutout_dir)
+    frame_paths = [os.path.join(bg_dir, vid.gid() + '_f{}_frame.png_RESULT.png'.format(fn)) for fn in range(75)]
+    bg_array = np.array([np.array(pil.open(fp)) for fp in frame_paths])
+    outfile = os.path.join(trajectories_dir, 'moving_bgs', '{}_bg.npy.npz'.format(vid.gid()))
+    np.savez_compressed(outfile, bg_array)

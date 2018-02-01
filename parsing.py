@@ -4,6 +4,12 @@ from nltk.tokenize import word_tokenize
 from nltk.tokenize import wordpunct_tokenize
 import string
 import re
+from nltk.parse.stanford import StanfordDependencyParser
+
+core_nlp_base = '/Users/schwenk/wrk/animation_gan/phrase_cues/deps/stanford_core_nlp/stanford-corenlp-full-2017-06-09/'
+path_to_jar = core_nlp_base + 'stanford-corenlp-3.8.0.jar'
+path_to_models_jar = core_nlp_base + 'stanford-corenlp-3.8.0-models.jar'
+dependency_parser = StanfordDependencyParser(path_to_jar=path_to_jar, path_to_models_jar=path_to_models_jar)
 
 punct_set = set(string.punctuation)
 punct_set.remove('.')
@@ -151,7 +157,21 @@ def parse_description(vid_text, nlp, parser):
 
 
 def parse_video(video, nlp, parser):
-    # print(video.gid())
     vid_parse = parse_description(video.description(), nlp, parser)
     video._data['parse'] = vid_parse
+
+
+def dep_parse_vid(video):
+    try:
+        vid_text = video.description()
+        vid_text = sanitize_text(vid_text)
+        raw_sentences = sentence_splitter.tokenize(vid_text)
+        sentences = [' '.join([w for w in wordpunct_tokenize(s) if set(w) - punct_set]).replace(' .',  '.') for s in raw_sentences]
+        results = [dependency_parser.raw_parse(sent) for sent in sentences]
+        deps = [r.__next__() for r in results]
+        dep_parses = [t for d in deps for t in list(d.triples())]
+        return {video.gid(): dep_parses}
+    except:
+        return {video.gid(): []}
+
 

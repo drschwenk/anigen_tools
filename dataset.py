@@ -327,7 +327,10 @@ class VideoAnnotation(object):
             'face',
             'waist',
             'nose',
-            'beard'
+            'beard',
+            'knee',
+            'elbow',
+            'brow'
         ]
 
         self.main_characters_lower = {
@@ -560,12 +563,10 @@ class VideoAnnotation(object):
     def update_stage4a(self, s4a_annos):
 
         def pass_object(obj):
-
-            obj = obj.replace(',', '')
             if obj == self.setting():
                 return False
             for body_part in self.body_parts:
-                if obj == body_part or obj == body_part + 's':
+                if obj == body_part or obj == body_part + 's' or obj[0].upper() + obj[1:] == body_part:
                     # self.body_part_assignment(obj)
                     # return False
                     return False
@@ -742,22 +743,21 @@ class VideoAnnotation(object):
                     ent_spans = self.assign_word_spans(ent)
                     # print(ent_spans)
                 ent._data['entitySpan'] = ent_spans
-                # print(ent_spans)
                 for idx, chunk_span in enumerate(chunk_spans):
                     # print(ent_spans, chunk_span, chunk_names[idx])
                     # print(self.check_overlap(ent_spans, chunk_span))
-                    # print(ent_spans)
                     if self.check_overlap(ent_spans, chunk_span):
                         if comp_chars:
                             try:
                                 object_npcs = [obj.data()['labelNPC'] for obj in self.data()['objects']]
                             except KeyError:
-                                print('fail', ent.gid())
+                                # print('fail', ent.gid())
                                 continue
                             if chunk_names[idx] in object_npcs:
                                 continue
                         ent._data['labelNPC'] = chunk_names[idx]
                         ent._data['entitySpan'] = list(chunk_span)
+                        break
             except IndexError:
                 pass
 

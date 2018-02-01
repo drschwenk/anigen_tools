@@ -30,7 +30,7 @@ def un_pickle_this(file_name):
 
 def write_task_page(page_html):
     html_dir = './html_renders'
-    html_out_file = os.path.join(html_dir, 'char_bbox.html')
+    html_out_file = os.path.join(html_dir, 'img_rate.html')
     if not os.path.exists(html_dir):
         os.makedirs(html_dir)
     with open(html_out_file, 'w') as f:
